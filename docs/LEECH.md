@@ -15,7 +15,7 @@ anywhere else. It downloads locally and sends to Telegram.
 
 ```bash
 pip install -r requirements.txt      # requests + kurigram + tgcrypto
-apt install aria2                    # leech.py installs aria2c itself when root
+# aria2c is optional; no apt/root access is required.
 ```
 
 Two ways to use it: standalone (`python3 leech.py <url>`) or as the bot
@@ -99,11 +99,9 @@ session identities (bot username, account name) are never logged at all.
 
 ## How it behaves
 
-- **Download backend**: aria2c only, multi-connection (`-x/-s` = `-j`).
-  Installed automatically with the system package manager when missing and
-  running as root; otherwise leech.py exits with a clear message.
+- **Download backend**: uses installed aria2c when available (multi-connection). Otherwise Python streams HTTP/HTTPS/FTP with one connection and bounded memory. No system packages are installed automatically. The fallback does not support magnets or resume; `-j` applies only to aria2c.
 - **Splitting**: files above `LEECH_SPLIT_SIZE` (default 2000 MB) are split
-  into `.001`, `.002`, ... parts with `split`, and the original is removed.
+  into `.001`, `.002`, ... parts using Python, and the original is removed.
 - **Upload routing**: the bot session is used for anything up to 2000 MB;
   a user session (when configured) handles the rest. A non-premium user
   account still cannot go past 2000 MB and logs a warning.

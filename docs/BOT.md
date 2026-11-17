@@ -100,8 +100,8 @@ Behaviour notes:
   otherwise it is sent to that private chat.
 - **Concurrency**: two downloads per chat at a time; further `/dl` calls
   answer `2 downloads already running`.
-- **Requirements**: `TELEGRAM_API`, `TELEGRAM_HASH` (my.telegram.org), aria2c
-  (auto-installed when root) and either `BOT_TOKEN` or `USER_SESSION_STRING`
+- **Requirements**: `TELEGRAM_API`, `TELEGRAM_HASH` (my.telegram.org), optional aria2c
+  (Python fallback when absent) and either `BOT_TOKEN` or `USER_SESSION_STRING`
   — from `.env`, same file as the archive bot. Without them `/dl` reports the
   missing key instead of failing silently.
 - **Split size** comes from `LEECH_SPLIT_SIZE` (default 2000 MB).
