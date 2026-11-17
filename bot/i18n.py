@@ -36,6 +36,9 @@ class Preferences:
 
 # English, Indonesian. Original mixed-language screens are normalized first.
 PHRASES = [
+    ('This recording is already queued.', 'Rekaman ini sudah dalam antrean.'),
+    ('Download queue is full. Try again later.', 'Antrean unduhan penuh. Coba lagi nanti.'),
+    ('Download queue is unavailable.', 'Antrean unduhan tidak tersedia.'),
     ('waiting for upload slot', 'menunggu giliran unggah'),
     ('Choose a recording:', 'Pilih rekaman:'),
     ('Source', 'Sumber'),

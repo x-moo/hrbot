@@ -52,7 +52,10 @@ async def upload_with_timeout(client, chat, path, *, timeout=None, **options):
     if timeout is None:
         timeout = max(1, env_int('LEECH_UPLOAD_TIMEOUT', 1800))
     try:
-        return await asyncio.wait_for(upload(client, chat, path, **options), timeout)
+        result = await asyncio.wait_for(upload(client, chat, path, **options), timeout)
+        if not getattr(result, "id", None):
+            raise RuntimeError("Upload not confirmed by a message id; file retained")
+        return result
     except TimeoutError:
         raise RuntimeError('Upload timed out; file retained. Check chat before retrying.') from None
 
@@ -130,6 +133,9 @@ async def run(args):
                             DEFAULT_SPLIT)
     thumb = args.thumb or os.environ.get("THUMB_PATH") or None
 
+    if chat is None and not args.dry_run:
+        raise SystemExit("no target chat: pass --chat or set LEECH_CHAT")
+
     started = time.time()
     log_line(f"start: {name}")        # no local path: it can leak account data
     produced = download(args.url, out_dir, name, headers, args.jobs, args.on_line)
@@ -146,16 +152,10 @@ async def run(args):
     if args.dry_run:
         log_line(f"dry-run: {len(files)} file(s) would be uploaded to {chat}")
         return files
-    if chat is None:
-        raise SystemExit("no target chat: pass --chat or set LEECH_CHAT")
 
     emit("waiting for upload slot", args.on_line)
     async with upload_slot():
-        uploader = (Client("haramain_leech_user", api_id, api_hash,
-                           session_string=session, workdir=str(HERE),
-                           parse_mode=enums.ParseMode.HTML,
-                           link_preview_options=LinkPreviewOptions(is_disabled=True))
-                    if session and not bot_token else None)
+        uploader = None
         bot = (Client("haramain_leech_bot", api_id, api_hash, bot_token=bot_token,
                       in_memory=True, no_updates=True,
                       workdir=str(HERE), parse_mode=enums.ParseMode.HTML,
@@ -170,16 +170,20 @@ async def run(args):
             if bot is not None:
                 await asyncio.wait_for(bot.start(), timeout=120)
                 log_line("session: bot ready")
-            if uploader is not None:
-                await asyncio.wait_for(uploader.start(), timeout=120)
-                me = await uploader.get_me()
-                user_premium = bool(getattr(me, "is_premium", False))
-                log_line(f"session: user ready (premium={user_premium})")
-
             total = len(files)
             for i, f in enumerate(files, 1):
                 size = os.path.getsize(f)
-                if uploader is not None and size > DEFAULT_SPLIT:
+                needs_user = bool(session and (bot is None or chat == "me" or size > DEFAULT_SPLIT))
+                if needs_user and uploader is None:
+                    uploader = Client("haramain_leech_user", api_id, api_hash,
+                                      session_string=session, workdir=str(HERE),
+                                      parse_mode=enums.ParseMode.HTML,
+                                      link_preview_options=LinkPreviewOptions(is_disabled=True))
+                    await asyncio.wait_for(uploader.start(), timeout=120)
+                    me = await asyncio.wait_for(uploader.get_me(), timeout=120)
+                    user_premium = bool(getattr(me, "is_premium", False))
+                    log_line(f"session: user ready (premium={user_premium})")
+                if uploader is not None and (chat == "me" or size > DEFAULT_SPLIT):
                     if not user_premium:
                         log_line(f"{fmt_size(size)} exceeds the 2000 MB non-premium limit")
                     client = uploader
@@ -196,12 +200,15 @@ async def run(args):
                     else:
                         log_line(f"could not remove {Path(f).name}")
         finally:
+            teardown_error = None
             for c in (uploader, bot):
                 if c is not None:
                     try:
-                        await asyncio.wait_for(c.stop(), timeout=30)
-                    except Exception:                                # noqa: BLE001
-                        pass
+                        await _stop_client(c)
+                    except Exception as error:
+                        teardown_error = error
+            if teardown_error is not None:
+                raise teardown_error
 
     cleanup_partials(files)
     if delete_after:
@@ -214,6 +221,20 @@ async def run(args):
             emit(f"storage freed: {fmt_size(freed)}", args.on_line)
     emit(f"done: {len(files)} file(s) in {time.time() - started:.1f}s", args.on_line)
     return files
+
+
+async def _stop_client(client):
+    """Stop a client, falling back to disconnect for partial startup."""
+    try:
+        await asyncio.wait_for(client.stop(), timeout=30)
+        return
+    except Exception as exc:  # noqa: BLE001
+        log_line(f"session: stop failed ({type(exc).__name__}); disconnecting")
+    try:
+        await asyncio.wait_for(client.disconnect(), timeout=30)
+    except Exception as exc:  # noqa: BLE001
+        log_line(f"session: disconnect failed ({type(exc).__name__})")
+        raise
 
 
 def resolve_target(chat, *, to_self=False):
@@ -230,6 +251,8 @@ def resolve_target(chat, *, to_self=False):
     if isinstance(chat, int):
         return chat, None
     text = str(chat).strip()
+    if not text:
+        return None, "no target chat to upload to"
     if re.fullmatch(r"-?\d+", text):
         return int(text), None
     if text.lower() in ("me", "self"):

@@ -20,6 +20,8 @@ Config (.env next to the script, or env vars):
     LONGPOLL_SEC    long-poll timeout       (default: 25)
 """
 import itertools
+from concurrent.futures import ThreadPoolExecutor
+import tempfile
 from contextvars import copy_context, ContextVar
 import secrets
 import os
@@ -58,12 +60,20 @@ def _download_rows(rows, chat):
                              'callback_data': 'item:' + key}])
     return buttons
 from bot.commands import configure_menu
+_MENU_CACHE = {}
 
 
 def _configure_menu(token, **options):
     """Menu setup failure must not prevent normal bot operation."""
+    key = (token, options.get('chat'), options.get('code', 'id'), options.get('private', False))
+    if _MENU_CACHE.get(key, 0) > time.monotonic():
+        return
     try:
         configure_menu(token, tg_call, **options)
+        for cached in list(_MENU_CACHE):
+            if cached[:2] == key[:2]:
+                del _MENU_CACHE[cached]
+        _MENU_CACHE[key] = time.monotonic() + 3600
     except (TgError, RuntimeError) as error:
         print(f'command menu setup failed: {error}', flush=True)
 
@@ -72,6 +82,7 @@ DEFAULT_DB = HERE / "archive.db"
 DL_LINES = 10          # lines kept in a per-download status message
 DL_JOBS = 2            # concurrent downloads per chat
 VIEW_TTL = 900         # seconds a result message's buttons keep working
+_LEECH_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix='leech')
 
 
 
@@ -176,7 +187,7 @@ def _render(spec, page, db):
     kind = spec["kind"]
     if kind == "search":
         fetch = lambda p: db.search_page(spec["terms"], p)
-        title = "🔎 " + " ".join(spec["terms"])
+        title = "🔎 `" + " ".join(spec["terms"]).replace('`', '').replace('\\', '')[:300] + '`'
         back = [{"text": "⬅️ Menu", "callback_data": "c:menu"}]
         prev_data, next_data = f"v:{page - 1}", f"v:{page + 1}"
     elif kind == "month":                       # a whole year-month window
@@ -196,6 +207,8 @@ def _render(spec, page, db):
     pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
     if not 1 <= page <= pages:                  # stale button after a re-import
         page = min(max(page, 1), pages)
+        prev_data = prev_data.rsplit(':', 1)[0] + ':' + str(page - 1)
+        next_data = next_data.rsplit(':', 1)[0] + ':' + str(page + 1)
         rows, total = fetch(page)
 
     text = f"{title}\n{total:,} result(s) · page {page}/{pages}"
@@ -518,10 +531,13 @@ def _run_leech(job, url, chat, name, split_size, thumb, as_doc, to_self):
         _dl_status(job)
 
     try:
+        root = HERE / 'downloads'
+        root.mkdir(exist_ok=True)
+        target = tempfile.mkdtemp(prefix=f"dl{job['id']}-", dir=root)
         files = leech.run_leech_sync(
             url, chat=chat, name=name, split_size=split_size, thumb=thumb,
             as_doc=as_doc, to_self=to_self, progress=note,
-            target_dir=HERE / "downloads" / f"dl{int(job['started'])}")
+            target_dir=target)
         job["files"] = [str(f) for f in files]
     except Exception as e:                                  # noqa: BLE001
         job["error"] = str(e)
@@ -556,14 +572,19 @@ def _dl_finish(job):
         tail = f"✅ done — {len(job['files'])} file(s): {names}"
     else:
         tail = "✅ done"
-    send_long(job["token"], job["chat"], lines + ["", tail])
+    try:
+        send_long(job["token"], job["chat"], lines + ["", tail])
+    except Exception:
+        print(f"download #{job['id']}: final notification failed", flush=True)
+    finally:
+        with job["lock"]:
+            job["pool"].pop(job["id"], None)
     try:
         tg_call(job["token"], "deleteMessage",
                 {"chat_id": job["chat"], "message_id": job["message_id"]})
     except Exception:                                       # noqa: BLE001
         pass
-    with job["lock"]:
-        job["pool"].pop(job["id"], None)
+
 
 
 _DL_POOL = {}
@@ -575,6 +596,14 @@ def start_leech(token, chat, url, name, split_size, thumb, as_doc, to_self):
     """Queue a leech; returns (status_text, started_bool)."""
     with _DL_POOL_LOCK:
         active = [j for j in _DL_POOL.values() if j["chat"] == chat]
+        if any(j['url'] == url for j in active):
+            return ('This recording is already queued.', False)
+        try:
+            capacity = max(1, int(os.environ.get('LEECH_QUEUE_SIZE', '10')))
+        except ValueError:
+            capacity = 10
+        if len(_DL_POOL) >= capacity:
+            return ('Download queue is full. Try again later.', False)
         if len(active) >= DL_JOBS:
             return (f"⏳ {len(active)} downloads already running — "
                     f"try again shortly.", False)
@@ -593,9 +622,13 @@ def start_leech(token, chat, url, name, split_size, thumb, as_doc, to_self):
         with _DL_POOL_LOCK:
             _DL_POOL.pop(job["id"], None)
         return (f"cannot post status: {e}", False)
-    threading.Thread(target=copy_context().run,
-                     args=(_run_leech, job, url, chat, name, split_size, thumb, as_doc, to_self),
-                     daemon=True).start()
+    try:
+        _LEECH_EXECUTOR.submit(copy_context().run, _run_leech,
+                               job, url, chat, name, split_size, thumb, as_doc, to_self)
+    except Exception:
+        with _DL_POOL_LOCK:
+            _DL_POOL.pop(job['id'], None)
+        return ('Download queue is unavailable.', False)
     return (f"⬇️ #{job['id']} started · {mask_url(url)}", True)
 
 

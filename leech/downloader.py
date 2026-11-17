@@ -6,9 +6,30 @@ import shutil
 import subprocess
 import time
 import urllib.request
+from urllib.parse import urlsplit
 from pathlib import Path
 from .utils import emit, log_line, fmt_size
 UPDATE_EVERY = 3.0
+
+
+class SafeRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        def origin(url):
+            parsed = urlsplit(url)
+            return parsed.scheme, parsed.hostname, parsed.port or (443 if parsed.scheme == 'https' else 80)
+        if redirected and origin(req.full_url) != origin(newurl):
+            for key in list(redirected.headers):
+                if key.lower() in ('authorization', 'cookie', 'proxy-authorization'):
+                    del redirected.headers[key]
+        return redirected
+
+
+def _limit(name, default):
+    try:
+        return max(1, int(os.environ.get(name, default)))
+    except ValueError:
+        return default
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
@@ -30,47 +51,11 @@ def progress_of(line):
 
 
 def download(url, out_dir, name, headers, jobs, on_line=None):
-    """Fetch with installed aria2c, otherwise stream using Python."""
+    """Use the bounded Python backend for every download."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     target = out_dir / name
-    backend = aria2c_path()
-    if not backend:
-        return download_python(url, out_dir, name, headers, on_line)
-    cmd = [backend, "-x", str(jobs), "-s", str(jobs), "-k", "1M",
-           "--file-allocation=none", "--summary-interval=5",
-           "--console-log-level=warn", "--allow-overwrite=false",
-           "--auto-file-renaming=false", "--user-agent", UA,
-           "-d", str(out_dir), "-o", name]
-    for h in headers:
-        cmd += ["--header", h]
-    cmd.append(url)
-
-    log_line("aria2c: downloading")
-    last = ""
-    sent = 0.0
-    with subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                          stderr=subprocess.STDOUT, text=True,
-                          errors="replace", bufsize=1) as proc:
-        for line in proc.stdout:
-            line = line.rstrip()
-            if not line:
-                continue
-            summary = progress_of(line)
-            if not summary:
-                log_line(f"aria2c: {line}")     # only warn-level output remains
-                continue
-            # one line every UPDATE_EVERY seconds to both the log and the chat
-            if time.time() - sent >= UPDATE_EVERY:
-                sent = time.time()
-                if summary != last:
-                    log_line(f"aria2c: {summary}")
-                    last = summary
-                if on_line:
-                    on_line(summary)
-    if proc.returncode != 0 or not target.exists():
-        raise SystemExit(f"aria2c failed (exit {proc.returncode})")
-    return [str(target)]
+    return download_python(url, out_dir, name, headers, on_line)
 
 
 # --- splitting ----------------------------------------------------------------
@@ -113,6 +98,12 @@ def download_python(url, out_dir, name, headers, on_line=None):
         raise RuntimeError('Python supports HTTP, HTTPS and FTP URLs; magnet needs aria2c')
     target = Path(out_dir) / name
     partial = target.with_name(target.name + '.part')
+    maximum = _limit('LEECH_MAX_BYTES', 512 * 1024 * 1024)
+    reserve = _limit('LEECH_MIN_FREE_BYTES', 128 * 1024 * 1024)
+    duration = _limit('LEECH_DOWNLOAD_TIMEOUT', 1800)
+    deadline = time.monotonic() + duration
+    if shutil.disk_usage(out_dir)[2] < reserve:
+        raise RuntimeError('insufficient free space')
     if target.exists():
         raise RuntimeError('download target already exists')
     request_headers = {'User-Agent': UA}
@@ -124,15 +115,26 @@ def download_python(url, out_dir, name, headers, on_line=None):
     request = urllib.request.Request(url, headers=request_headers)
     owned = False
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        opener = urllib.request.build_opener(SafeRedirect())
+        with opener.open(request, timeout=min(60, duration)) as response:
             length = response.headers.get('Content-Length')
             total = int(length) if length else None
+            if total is not None and total > maximum:
+                raise RuntimeError('maximum download size exceeded')
+            if total is not None and shutil.disk_usage(out_dir)[2] < total + reserve:
+                raise RuntimeError('insufficient free space')
             received = 0
             last = 0.0
             with partial.open('xb') as output:
                 owned = True
                 emit('python: downloading', on_line)
                 while chunk := response.read(1024 * 1024):
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError('download timed out')
+                    if received + len(chunk) > maximum:
+                        raise RuntimeError('maximum download size exceeded')
+                    if shutil.disk_usage(out_dir)[2] < reserve + len(chunk):
+                        raise RuntimeError('insufficient free space')
                     output.write(chunk)
                     received += len(chunk)
                     if time.monotonic() - last >= UPDATE_EVERY:

@@ -108,7 +108,12 @@ Tombol hanya merujuk URL arsip yang ditampilkan, terikat pada chat asal,
 dan berlaku 15 menit. Setelah restart atau kedaluwarsa, buka hasil arsip
 lagi untuk mendapatkan tombol baru. Mengimpor ulang arsip tidak mengubah
 URL tujuan tombol yang masih berlaku. Maksimal dua unduhan berjalan per chat.
-Backend tetap memakai aria2c jika tersedia, atau fallback Python.
+Backend download memakai Python dengan batas ukuran dan ruang disk.
+Bot memakai dua worker tetap dan membatasi seluruh job aktif/menunggu melalui
+`LEECH_QUEUE_SIZE` (default 10). Maksimal dua job per chat; permintaan rekaman
+yang sama dalam satu chat ditolak selama masih aktif atau menunggu. Fase
+upload tetap satu per satu. Folder setiap job unik, dan slot dibersihkan
+walaupun pesan notifikasi terakhir gagal. Antrean tidak persisten setelah restart.
 Upload membutuhkan TELEGRAM_API, TELEGRAM_HASH dan BOT_TOKEN/USER_SESSION_STRING.
 Standalone `python3 leech.py <url>` tetap tersedia untuk operator server.
 

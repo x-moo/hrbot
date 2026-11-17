@@ -110,7 +110,9 @@ session identities (bot username, account name) are never logged at all.
   library retry warning, not final proof of failed delivery. Look for `sent`
   and `done`, or the final failure message. Network failures can still occur.
 
-- **Download backend**: uses installed aria2c when available (multi-connection). Otherwise Python streams HTTP/HTTPS/FTP with one connection and bounded memory. No system packages are installed automatically. The fallback does not support magnets or resume; `-j` applies only to aria2c.
+- **Download backend**: Python streams HTTP/HTTPS/FTP with one connection and bounded memory. All downloads use this backend so resource limits cannot be bypassed by an installed binary. No magnets or resume; the legacy `-j` option is accepted for compatibility but has no effect.
+- **Resource limits**: `LEECH_MAX_BYTES` defaults to 536870912 (512 MiB), `LEECH_MIN_FREE_BYTES` to 134217728 (128 MiB), and `LEECH_DOWNLOAD_TIMEOUT` to 1800 seconds. The downloader checks declared and streamed size, free space, and elapsed time between reads. Socket reads time out after at most 60 seconds; a stalled read can overrun the elapsed-time limit by that interval. Partials created by failed jobs are removed. Failed upload files remain for operator inspection, so monitor disk usage.
+- **Redirects**: Authorization, Cookie and Proxy-Authorization headers are removed when a redirect changes origin, including HTTPS-to-HTTP redirects.
 - **Splitting**: files above `LEECH_SPLIT_SIZE` (default 2000 MB) are split
   into `.001`, `.002`, ... parts using Python, and the original is removed.
 - **Upload routing**: the bot session is used for anything up to 2000 MB;
