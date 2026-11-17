@@ -148,9 +148,6 @@ def menu_markup():
     return _mk([
         [{"text": "🆕 Latest", "callback_data": "c:latest"},
          {"text": "🔎 Search", "callback_data": "c:search"}],
-        [{"text": "📅 By date", "callback_data": "c:date"},
-         {"text": "🗓 Year", "callback_data": "c:years"}],
-        [{"text": "📊 Stat", "callback_data": "c:stat"}],
         [{"text": "❓ Help", "callback_data": "c:help"},
          {"text": "🌐 Language", "callback_data": "c:language"}],
     ])
