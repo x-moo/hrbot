@@ -44,13 +44,12 @@ mengetik. Setiap layar punya baris `[ ⬅️ … ] [ 🔝 Menu ]` untuk naik lag
 | /date YYYY-MM-DD | /date 2026-10-28 | ⬅️ Back / 📄 / Next ➡️ | media satu tanggal |
 | /year [yyyy] | /year 2024 | 🗓 tahun → 📅 bulan → halaman | telusuri per tahun/bulan |
 | /stat | /stat | 🔝 Menu | statistik arsip |
-| /dl \<url\> | /dl https://host/rec.mp3 | — | unduh + kirim lewat MTProto |
 
 ## Peta tombol
 
 Bot juga mengaktifkan tombol **Menu** bawaan Telegram di sebelah kolom pesan
 pada chat privat. Tombol ini membuka daftar `/start`, `/latest`, `/search`,
-`/date`, `/year`, `/stat`, `/dl`, `/language`, dan `/help`. Perintah yang
+`/date`, `/year`, `/stat`, `/language`, dan `/help`. Perintah yang
 memerlukan argumen tetap harus dilengkapi pengguna sebelum dikirim.
 Registrasi dilakukan saat startup dan `/start`; perubahan bahasa juga
 memperbarui deskripsi perintah untuk chat tersebut. Nama dan posisi tombol
@@ -96,39 +95,20 @@ bertahan setelah restart dan impor ulang. Direktori repository harus writable.
 - Polling pakai `allowed_updates: ["message", "callback_query"]`, dan tiap
   tap dibalas `answerCallbackQuery` supaya spinner klien berhenti.
 
-## /dl — leech into Telegram
+## Download dari hasil arsip
 
-`/dl <url>` downloads the URL with aria2c and uploads it with the
-MTProto session, so files the Bot API would refuse (anything above 50 MB)
-still get through. A status message is edited while it works, then the
-result is posted and the status removed. Status text stays deliberately
-plain: `⬇️ #1 · host.tld/…/file.mp3` plus short progress lines — the URL's
-query string (often a token) and any session identity stay out.
+Tekan **⬇️ Unduh · nama-berkas** pada hasil terbaru, pencarian,
+tanggal, atau bulan untuk mengunduh dan menerima file di chat yang sama.
+Tidak perlu menyalin URL. Perintah `/dl` untuk URL bebas sudah dinonaktifkan
+dan dihapus dari menu serta daftar perintah Telegram.
 
-```
-/dl https://host/rec.mp3                 # send to this chat
-/dl https://host/rec.mp3 as doc          # force document (no video/audio preview)
-/dl https://host/big.mkv to channel      # keep the file in LEECH_CHAT instead
-```
-
-Behaviour notes:
-
-- **Types as media** (audio/video/photo) by extension; `as doc` forces a
-  document. Split parts (`.001`, …) always go as documents.
-- **Target chat** is the chat the command came from. From a *private* chat
-  the file lands in your Saved Messages when `USER_SESSION_STRING` is set;
-  otherwise it is sent to that private chat.
-- **Concurrency**: two downloads per chat at a time; further `/dl` calls
-  answer `2 downloads already running`.
-- **Requirements**: `TELEGRAM_API`, `TELEGRAM_HASH` (my.telegram.org), optional aria2c
-  (Python fallback when absent) and either `BOT_TOKEN` or `USER_SESSION_STRING`
-  — from `.env`, same file as the archive bot. Without them `/dl` reports the
-  missing key instead of failing silently.
-- **Split size** comes from `LEECH_SPLIT_SIZE` (default 2000 MB).
-- **Disk usage**: each file is deleted as soon as it is uploaded and the
-  `downloads/dl<timestamp>/` folder is removed once empty, so storage stays
-  near zero between downloads. The bot also sweeps empty folders at startup.
-  Set `KEEP_FILES=1` to keep the files instead.
+Tombol hanya merujuk URL arsip yang ditampilkan, terikat pada chat asal,
+dan berlaku 15 menit. Setelah restart atau kedaluwarsa, buka hasil arsip
+lagi untuk mendapatkan tombol baru. Mengimpor ulang arsip tidak mengubah
+URL tujuan tombol yang masih berlaku. Maksimal dua unduhan berjalan per chat.
+Backend tetap memakai aria2c jika tersedia, atau fallback Python.
+Upload membutuhkan TELEGRAM_API, TELEGRAM_HASH dan BOT_TOKEN/USER_SESSION_STRING.
+Standalone `python3 leech.py <url>` tetap tersedia untuk operator server.
 
 ## 500 MB RAM server
 

@@ -9,7 +9,6 @@ COMMANDS = (
     ('date', 'Browse recordings by date', 'Cari rekaman berdasarkan tanggal'),
     ('year', 'Browse years and months', 'Telusuri tahun dan bulan'),
     ('stat', 'Archive statistics', 'Statistik arsip'),
-    ('dl', 'Download and send a file', 'Unduh dan kirim berkas'),
     ('language', 'Choose English or Indonesian', 'Pilih bahasa Inggris atau Indonesia'),
     ('help', 'Command help', 'Bantuan perintah'),
 )

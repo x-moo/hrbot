@@ -18,8 +18,7 @@ pip install -r requirements.txt      # requests + kurigram + tgcrypto
 # aria2c is optional; no apt/root access is required.
 ```
 
-Two ways to use it: standalone (`python3 leech.py <url>`) or as the bot
-command `/dl <url>` — see `BOT.md`.
+Two ways to use it: standalone (`python3 leech.py <url>`) or through the bot archive download buttons — see `BOT.md`.
 
 ## Configure
 

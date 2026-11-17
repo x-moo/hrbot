@@ -8,7 +8,7 @@ Commands:
     /search <word...>    search file names/slugs
     /year <yyyy>         per-year summary
     /stat                archive statistics
-    /dl <url>            download a URL and send the file over MTProto
+    Archive results include download buttons.
 
 `/date` and `/search` results are paged (PAGE_SIZE per message) with inline
 ⬅️ Back / Next ➡️ buttons that re-render the message in place.
@@ -20,7 +20,8 @@ Config (.env next to the script, or env vars):
     LONGPOLL_SEC    long-poll timeout       (default: 25)
 """
 import itertools
-from contextvars import copy_context
+from contextvars import copy_context, ContextVar
+import secrets
 import os
 import re
 import sqlite3
@@ -35,6 +36,26 @@ from bot.telegram import NO_PREVIEW, TgError, tg_call, send, send_long
 from bot.i18n import Preferences, language, translate, localize_markup
 
 preferences = Preferences()
+current_chat = ContextVar('current_chat', default=None)
+_DOWNLOADS = {}
+_DOWNLOAD_LOCK = threading.Lock()
+
+
+def _download_rows(rows, chat):
+    """Opaque, expiring archive URL snapshots; never accept a callback URL."""
+    buttons = []
+    with _DOWNLOAD_LOCK:
+        now = time.time()
+        for key in [k for k, value in _DOWNLOADS.items() if value['expires'] < now]:
+            del _DOWNLOADS[key]
+        for row in rows:
+            if not row['url'].lower().startswith(('http://', 'https://')):
+                continue
+            key = secrets.token_urlsafe(12)
+            _DOWNLOADS[key] = {'chat': chat, 'url': row['url'], 'expires': now + VIEW_TTL}
+            buttons.append([{'text': '⬇️ Download · ' + (row['fname'] or 'file')[:45],
+                             'callback_data': 'get:' + key}])
+    return buttons
 from bot.commands import configure_menu
 
 
@@ -129,8 +150,7 @@ def menu_markup():
          {"text": "🔎 Search", "callback_data": "c:search"}],
         [{"text": "📅 By date", "callback_data": "c:date"},
          {"text": "🗓 Year", "callback_data": "c:years"}],
-        [{"text": "📊 Stat", "callback_data": "c:stat"},
-         {"text": "⬇️ /dl", "callback_data": "c:dl"}],
+        [{"text": "📊 Stat", "callback_data": "c:stat"}],
         [{"text": "❓ Help", "callback_data": "c:help"},
          {"text": "🌐 Language", "callback_data": "c:language"}],
     ])
@@ -182,7 +202,8 @@ def _render(spec, page, db):
 
     body = "\n\n".join(fmt_item(r) for r in rows) or "_(no media on this page)_"
     text = f"{title}\n{total:,} result(s) · page {page}/{pages}\n\n{body}"
-    return text, _pager_rows(page, pages, prev_data, next_data, extra=(back,))
+    return text, _pager_rows(page, pages, prev_data, next_data,
+                             extra=(*_download_rows(rows, current_chat.get()), back))
 
 
 def _push(token, chat, text, markup=None, edit_of=None):
@@ -227,7 +248,7 @@ def _screen_menu(db):
     return ("Assalamu'alaikum 🕌 *haramain.info* media archive\n"
             f"{head}\n\n"
             "Pilih menu di bawah, atau pakai perintah langsung\n"
-            "(/latest, /search, /date, /year, /stat, /dl).\n"
+            "(/latest, /search, /date, /year, /stat, /language).\n"
             "Hasil pencarian muncul 5 per halaman — tombol ⬅️ Back / Next ➡️.",
             menu_markup())
 
@@ -254,16 +275,11 @@ def _screen_stat(db):
     return "\n".join(lines), _mk([[HOME]])
 
 
-def _screen_latest(db):
-    return _latest_text(db, 5), _mk([[HOME]])
-
-
-def _latest_text(db, n):
+def _screen_latest(db, n=5):
     rows = db.latest(n)
-    if not rows:
-        return "Archive is empty — import first: `python3 import_dump.py`"
-    body = "\n\n".join(fmt_item(r) for r in rows)
-    return f"🆕 *Latest {n}*\n\n{body}"
+    text = (f'🆕 *Latest {n}*\n\n' + '\n\n'.join(fmt_item(r) for r in rows)
+            if rows else 'Archive is empty — import first: `python3 import_dump.py`')
+    return text, _mk([*_download_rows(rows, current_chat.get()), [HOME]])
 
 
 def _screen_search(db):
@@ -278,15 +294,6 @@ def _screen_date(db):
             "Kirim: `/date YYYY-MM-DD` — mis. `/date 2026-10-28`\n"
             "Atau telusuri per bulan lewat tombol 🗓 Year.",
             _mk([[{"text": "🗓 Year", "callback_data": "c:years"}, HOME]]))
-
-
-def _screen_dl(db):
-    return ("⬇️ *Download (/dl)*\n\n"
-            "Kirim: `/dl <url>` — mis.\n"
-            "`/dl http://host/fajr_sudais.mp3`\n\n"
-            "Varian: `/dl <url> as doc` (tanpa preview) · "
-            "`/dl <url> to channel` (post ke channel leech).",
-            _mk([[HOME]]))
 
 
 def _screen_years(db):
@@ -343,8 +350,6 @@ def _handle_callback(cb, db, token):
             return _screen_search(db)
         if data == "c:date":
             return _screen_date(db)
-        if data == "c:dl":
-            return _screen_dl(db)
         if data == "c:years":
             return _screen_years(db)
         if data.startswith("c:y:"):
@@ -353,6 +358,21 @@ def _handle_callback(cb, db, token):
 
     if chat is None or message_id is None:
         answer()
+        return
+
+    if data.startswith('get:'):
+        with _DOWNLOAD_LOCK:
+            item = _DOWNLOADS.get(data[4:])
+            valid = item and item['chat'] == chat and item['expires'] >= time.time()
+        if not valid:
+            answer(translate('Results have expired — run the command again.'), alert=True)
+            return
+        answer()
+        note, _ = start_leech(token, chat, item['url'], None,
+                              os.environ.get('LEECH_SPLIT_SIZE'),
+                              os.environ.get('THUMB_PATH') or None,
+                              False, to_self=False)
+        send(token, chat, note)
         return
 
     if data in ("lang:en", "lang:id"):
@@ -549,21 +569,6 @@ def start_leech(token, chat, url, name, split_size, thumb, as_doc, to_self):
     return (f"⬇️ #{job['id']} started · {mask_url(url)}", True)
 
 
-def _parse_dl(text):
-    """Parse `/dl <url> [tail]` -> (url, tail) or None.
-
-    Split on the first URL-looking token so file names with spaces that follow
-    the URL stay in the tail.
-    """
-    m = re.match(r"^/dl(?:@\w+)?\s+(\S+)(?:\s+(.*))?$", text.strip(), re.I)
-    if not m:
-        return None
-    url = m.group(1).strip()
-    if not re.match(r"^(https?|ftp)://|^magnet:", url, re.I):
-        return None
-    return url, (m.group(2) or "").strip()
-
-
 def help_text():
     return ("Assalamu'alaikum 🕌 *haramain.info* media archive bot.\n\n"
             "Tekan /start untuk menu tombol — semua perintah di bawah ini\n"
@@ -573,8 +578,7 @@ def help_text():
             "• /date YYYY-MM-DD — media satu tanggal\n"
             "• /year [yyyy] — telusuri per tahun → bulan\n"
             "• /stat — statistik arsip\n"
-            "• /dl <url> — unduh file\n"
-            "    `/dl <url> as doc` atau `/dl <url> to channel`\n\n"
+            "Klik tombol Unduh pada hasil arsip untuk menerima berkas.\n\n"
             "Hasil panjang tampil 5 per halaman dengan tombol ⬅️ Back / Next ➡️.")
 
 
@@ -583,10 +587,12 @@ def handle_update(upd, db, token):
     msg = (upd.get('callback_query') or {}).get('message') or upd.get('message') or upd.get('edited_message') or {}
     chat = (msg.get('chat') or {}).get('id')
     context = language.set(preferences.get(chat) if chat is not None else 'id')
+    chat_context = current_chat.set(chat)
     try:
         return _handle_update(upd, db, token)
     finally:
         language.reset(context)
+        current_chat.reset(chat_context)
 
 
 def _handle_update(upd, db, token):
@@ -598,25 +604,6 @@ def _handle_update(upd, db, token):
     text = (msg.get("text") or "").strip()
     chat = msg.get("chat", {}).get("id")
     if not text or chat is None:
-        return
-
-    # /dl must be matched before the whitespace split: file names contain spaces
-    dl = _parse_dl(text)
-    if dl:
-        url, tail = dl
-        flags = tail.lower().split()
-        as_doc = "doc" in flags or "document" in flags
-        to_channel = "channel" in flags or "keep" in flags
-        from_private = msg.get("chat", {}).get("type") == "private"
-        # a user session can post to its own Saved Messages ("me"); a bot
-        # session cannot, so without one the file goes to the invoking chat
-        has_user_session = bool(os.environ.get("USER_SESSION_STRING", "").strip())
-        to_self = bool(from_private and not to_channel and has_user_session)
-        note, _ = start_leech(token, chat, url, None,
-                              os.environ.get("LEECH_SPLIT_SIZE"),
-                              os.environ.get("THUMB_PATH") or None,
-                              as_doc, to_self=to_self)
-        send(token, chat, note)
         return
 
     parts = text.split()
@@ -634,8 +621,7 @@ def _handle_update(upd, db, token):
         _push(token, chat, out[0], out[1])
     elif cmd == "/latest":
         n = min(int(args[0]) if args and args[0].isdigit() else 5, 10)
-        out = _screen_latest(db) if n == 5 else (
-            _latest_text(db, n), _mk([[HOME]]))
+        out = _screen_latest(db, n)
         _push(token, chat, out[0], out[1])
     elif cmd == "/date":
         m = re.match(r"(\d{4})-(\d{2})(?:-(\d{2}))?", args[0] if args else "")
@@ -665,9 +651,6 @@ def _handle_update(upd, db, token):
         _push(token, chat, out[0], out[1])
     elif cmd == "/stat":
         out = _screen_stat(db)
-        _push(token, chat, out[0], out[1])
-    elif cmd == "/dl":
-        out = _screen_dl(db)          # /dl with no url -> how-to screen
         _push(token, chat, out[0], out[1])
     else:
         send(token, chat, "Unknown command. Use /help for the list.")
