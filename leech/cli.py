@@ -30,6 +30,7 @@ from config import load_env
 from types import SimpleNamespace
 from .utils import redact, log_line, emit, env_int, parse_size, media_kind, fmt_size, kind_label
 from .downloader import download, split_file
+from .session import upload_slot
 
 try:
     from pyrogram import Client, enums
@@ -46,6 +47,16 @@ UPDATE_EVERY = 3.0                  # seconds between chat status updates
 
 
 # --- upload -------------------------------------------------------------------
+async def upload_with_timeout(client, chat, path, *, timeout=None, **options):
+    """Bound library retries; do not blindly resend an ambiguous delivery."""
+    if timeout is None:
+        timeout = max(1, env_int('LEECH_UPLOAD_TIMEOUT', 1800))
+    try:
+        return await asyncio.wait_for(upload(client, chat, path, **options), timeout)
+    except TimeoutError:
+        raise RuntimeError('Upload timed out; file retained. Check chat before retrying.') from None
+
+
 async def upload(client, chat, path, as_doc=False, thumb=None, caption=None):
     """Send one file with the Pyrogram method matching its kind."""
     kind = "doc" if as_doc else media_kind(path)
@@ -138,56 +149,59 @@ async def run(args):
     if chat is None:
         raise SystemExit("no target chat: pass --chat or set LEECH_CHAT")
 
-    uploader = (Client("haramain_leech_user", api_id, api_hash,
-                       session_string=session, workdir=str(HERE),
-                       parse_mode=enums.ParseMode.HTML,
-                       link_preview_options=LinkPreviewOptions(is_disabled=True))
-                if session and not bot_token else None)
-    bot = (Client("haramain_leech_bot", api_id, api_hash, bot_token=bot_token,
-                  workdir=str(HERE), parse_mode=enums.ParseMode.HTML,
-                  link_preview_options=LinkPreviewOptions(is_disabled=True))
-           if bot_token else None)
+    emit("waiting for upload slot", args.on_line)
+    async with upload_slot():
+        uploader = (Client("haramain_leech_user", api_id, api_hash,
+                           session_string=session, workdir=str(HERE),
+                           parse_mode=enums.ParseMode.HTML,
+                           link_preview_options=LinkPreviewOptions(is_disabled=True))
+                    if session and not bot_token else None)
+        bot = (Client("haramain_leech_bot", api_id, api_hash, bot_token=bot_token,
+                      in_memory=True, no_updates=True,
+                      workdir=str(HERE), parse_mode=enums.ParseMode.HTML,
+                      link_preview_options=LinkPreviewOptions(is_disabled=True))
+               if bot_token else None)
 
-    delete_after = not args.keep and os.environ.get("KEEP_FILES", "0") != "1"
-    freed = 0
-    user_premium = False
-    try:
-        # session identity is never logged: usernames/names are account data
-        if bot is not None:
-            await bot.start()
-            log_line("session: bot ready")
-        if uploader is not None:
-            await uploader.start()
-            me = await uploader.get_me()
-            user_premium = bool(getattr(me, "is_premium", False))
-            log_line(f"session: user ready (premium={user_premium})")
+        delete_after = not args.keep and os.environ.get("KEEP_FILES", "0") != "1"
+        freed = 0
+        user_premium = False
+        try:
+            # session identity is never logged: usernames/names are account data
+            if bot is not None:
+                await asyncio.wait_for(bot.start(), timeout=120)
+                log_line("session: bot ready")
+            if uploader is not None:
+                await asyncio.wait_for(uploader.start(), timeout=120)
+                me = await uploader.get_me()
+                user_premium = bool(getattr(me, "is_premium", False))
+                log_line(f"session: user ready (premium={user_premium})")
 
-        total = len(files)
-        for i, f in enumerate(files, 1):
-            size = os.path.getsize(f)
-            if uploader is not None and size > DEFAULT_SPLIT:
-                if not user_premium:
-                    log_line(f"{fmt_size(size)} exceeds the 2000 MB non-premium limit")
-                client = uploader
-            else:
-                client = bot or uploader
-            emit(f"uploading {i}/{total} · {Path(f).name} · "
-                 f"{fmt_size(size)} · {kind_label(f)}", args.on_line)
-            await upload(client, chat, f, as_doc=args.as_doc, thumb=thumb)
-            emit(f"sent {i}/{total} ✓", args.on_line)
-            if delete_after:
-                # free the disk as soon as Telegram confirmed the file
-                if discard(f):
-                    freed += size
+            total = len(files)
+            for i, f in enumerate(files, 1):
+                size = os.path.getsize(f)
+                if uploader is not None and size > DEFAULT_SPLIT:
+                    if not user_premium:
+                        log_line(f"{fmt_size(size)} exceeds the 2000 MB non-premium limit")
+                    client = uploader
                 else:
-                    log_line(f"could not remove {Path(f).name}")
-    finally:
-        for c in (uploader, bot):
-            if c is not None:
-                try:
-                    await c.stop()
-                except Exception:                                # noqa: BLE001
-                    pass
+                    client = bot or uploader
+                emit(f"uploading {i}/{total} · {Path(f).name} · "
+                     f"{fmt_size(size)} · {kind_label(f)}", args.on_line)
+                await upload_with_timeout(client, chat, f, as_doc=args.as_doc, thumb=thumb)
+                emit(f"sent {i}/{total} ✓", args.on_line)
+                if delete_after:
+                    # free the disk as soon as Telegram confirmed the file
+                    if discard(f):
+                        freed += size
+                    else:
+                        log_line(f"could not remove {Path(f).name}")
+        finally:
+            for c in (uploader, bot):
+                if c is not None:
+                    try:
+                        await asyncio.wait_for(c.stop(), timeout=30)
+                    except Exception:                                # noqa: BLE001
+                        pass
 
     cleanup_partials(files)
     if delete_after:

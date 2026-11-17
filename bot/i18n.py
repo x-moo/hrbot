@@ -36,6 +36,7 @@ class Preferences:
 
 # English, Indonesian. Original mixed-language screens are normalized first.
 PHRASES = [
+    ('waiting for upload slot', 'menunggu giliran unggah'),
     ('Choose a recording:', 'Pilih rekaman:'),
     ('Source', 'Sumber'),
     ('Click Download on an archive result to receive the file.',

@@ -98,6 +98,18 @@ session identities (bot username, account name) are never logged at all.
 
 ## How it behaves
 
+- **Session lifecycle**: MTProto uploads are serialized within the bot process,
+  including client startup and shutdown. Bot clients use isolated in-memory
+  sessions with updates disabled; no shared bot `.session` file is opened.
+  The old session file can remain on disk and is no longer used by this path.
+- **Timeouts**: startup is limited to 120 seconds, shutdown to 30 seconds, and
+  each file upload to `LEECH_UPLOAD_TIMEOUT` seconds (default 1800). Failed or
+  timed-out files remain on disk. Check the destination before retrying an
+  ambiguous upload; the application does not blindly resend it.
+- **Reconnect warnings**: `Session stopped before an answer arrived` is a
+  library retry warning, not final proof of failed delivery. Look for `sent`
+  and `done`, or the final failure message. Network failures can still occur.
+
 - **Download backend**: uses installed aria2c when available (multi-connection). Otherwise Python streams HTTP/HTTPS/FTP with one connection and bounded memory. No system packages are installed automatically. The fallback does not support magnets or resume; `-j` applies only to aria2c.
 - **Splitting**: files above `LEECH_SPLIT_SIZE` (default 2000 MB) are split
   into `.001`, `.002`, ... parts using Python, and the original is removed.
