@@ -36,6 +36,8 @@ class Preferences:
 
 # English, Indonesian. Original mixed-language screens are normalized first.
 PHRASES = [
+    ('Choose a recording:', 'Pilih rekaman:'),
+    ('Source', 'Sumber'),
     ('Click Download on an archive result to receive the file.',
      'Klik tombol Unduh pada hasil arsip untuk menerima berkas.'),
     ('downloads already running', 'unduhan sedang berjalan'),
@@ -126,6 +128,7 @@ def localize_markup(markup):
         return markup
     return {**markup, 'inline_keyboard': [
         [{**button, 'text': (translate('⬇️ Download') + ' · ' + button['text'].split(' · ', 1)[1]
-                            if button.get('callback_data', '').startswith('get:')
+                            if button.get('callback_data', '').startswith('get:') and ' · ' in button['text']
+                            else button['text'] if button.get('callback_data', '').startswith('item:')
                             else translate(button['text']))} for button in row]
         for row in markup['inline_keyboard']]}

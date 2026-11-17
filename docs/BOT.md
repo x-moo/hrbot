@@ -97,8 +97,10 @@ bertahan setelah restart dan impor ulang. Direktori repository harus writable.
 
 ## Download dari hasil arsip
 
-Tekan **⬇️ Unduh · nama-berkas** pada hasil terbaru, pencarian,
-tanggal, atau bulan untuk mengunduh dan menerima file di chat yang sama.
+Hasil terbaru, pencarian, tanggal, dan bulan menampilkan tombol nama rekaman,
+tanpa daftar teks tautan yang berulang. Klik nama rekaman untuk membuka
+detail: **🔗 Sumber** membuka halaman asal, **⬇️ Unduh** mengirim file ke chat
+yang sama, dan **⬅️ Kembali** memulihkan daftar serta halaman sebelumnya.
 Tidak perlu menyalin URL. Perintah `/dl` untuk URL bebas sudah dinonaktifkan
 dan dihapus dari menu serta daftar perintah Telegram.
 

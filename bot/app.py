@@ -52,9 +52,10 @@ def _download_rows(rows, chat):
             if not row['url'].lower().startswith(('http://', 'https://')):
                 continue
             key = secrets.token_urlsafe(12)
-            _DOWNLOADS[key] = {'chat': chat, 'url': row['url'], 'expires': now + VIEW_TTL}
-            buttons.append([{'text': '⬇️ Download · ' + (row['fname'] or 'file')[:45],
-                             'callback_data': 'get:' + key}])
+            _DOWNLOADS[key] = {'chat': chat, 'url': row['url'], 'row': dict(row),
+                               'expires': now + VIEW_TTL}
+            buttons.append([{'text': '🎧 ' + (row['fname'] or 'file')[:60],
+                             'callback_data': 'item:' + key}])
     return buttons
 from bot.commands import configure_menu
 
@@ -197,14 +198,20 @@ def _render(spec, page, db):
         page = min(max(page, 1), pages)
         rows, total = fetch(page)
 
-    body = "\n\n".join(fmt_item(r) for r in rows) or "_(no media on this page)_"
-    text = f"{title}\n{total:,} result(s) · page {page}/{pages}\n\n{body}"
+    text = f"{title}\n{total:,} result(s) · page {page}/{pages}"
     return text, _pager_rows(page, pages, prev_data, next_data,
                              extra=(*_download_rows(rows, current_chat.get()), back))
 
 
 def _push(token, chat, text, markup=None, edit_of=None):
     """Send a screen, or edit it in place. Falls back to plain text on parse errors."""
+    if markup:
+        with _DOWNLOAD_LOCK:
+            for row in markup['inline_keyboard']:
+                for button in row:
+                    data = button.get('callback_data', '')
+                    if data.startswith('item:') and data[5:] in _DOWNLOADS:
+                        _DOWNLOADS[data[5:]]['parent'] = (text, markup)
     payload = {"chat_id": chat, "text": translate(text), "parse_mode": "Markdown", **NO_PREVIEW}
     if markup:
         payload["reply_markup"] = localize_markup(markup)
@@ -274,7 +281,7 @@ def _screen_stat(db):
 
 def _screen_latest(db, n=5):
     rows = db.latest(n)
-    text = (f'🆕 *Latest {n}*\n\n' + '\n\n'.join(fmt_item(r) for r in rows)
+    text = ('Choose a recording:'
             if rows else 'Archive is empty — import first: `python3 import_dump.py`')
     return text, _mk([*_download_rows(rows, current_chat.get()), [HOME]])
 
@@ -355,6 +362,30 @@ def _handle_callback(cb, db, token):
 
     if chat is None or message_id is None:
         answer()
+        return
+
+    if data.startswith(('item:', 'list:')):
+        key = data.split(':', 1)[1]
+        with _DOWNLOAD_LOCK:
+            item = _DOWNLOADS.get(key)
+            valid = item and item['chat'] == chat and item['expires'] >= time.time()
+        if not valid:
+            answer('Results have expired — run the command again.', alert=True)
+            return
+        answer()
+        if data.startswith('list:'):
+            parent = item.get('parent')
+            if parent:
+                _push(token, chat, *parent, edit_of=message_id)
+            return
+        record = item['row']
+        buttons = []
+        if record.get('post', '').lower().startswith(('http://', 'https://')):
+            buttons.append({'text': '🔗 Source', 'url': record['post']})
+        buttons.append({'text': '⬇️ Download', 'callback_data': 'get:' + key})
+        markup = _mk([buttons, [{'text': '⬅️ Back', 'callback_data': 'list:' + key}]])
+        name = record.get('fname') or record.get('slug') or 'Recording'
+        _push(token, chat, name, markup, edit_of=message_id)
         return
 
     if data.startswith('get:'):

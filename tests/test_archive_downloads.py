@@ -16,7 +16,7 @@ class ArchiveDownloadTests(unittest.TestCase):
     def test_archive_button_is_bound_to_chat_and_url_snapshot(self):
         rows = [{'url': 'https://archive.example/audio.mp3', 'fname': 'audio.mp3'}]
         buttons = app._download_rows(rows, 7)
-        data = buttons[0][0]['callback_data']
+        data = buttons[0][0]['callback_data'].replace('item:', 'get:')
         def callback(chat):
             return {'id': 'tap', 'data': data, 'message': {
                 'message_id': 3, 'chat': {'id': chat, 'type': 'private'}}}
@@ -42,7 +42,7 @@ class ArchiveDownloadTests(unittest.TestCase):
         try:
             for _, markup in [app._screen_latest(db),
                               app._render({'kind': 'search', 'terms': ['audio']}, 1, db)]:
-                self.assertTrue(any(button.get('callback_data', '').startswith('get:')
+                self.assertTrue(any(button.get('callback_data', '').startswith('item:')
                                     for line in markup['inline_keyboard'] for button in line))
         finally:
             app.current_chat.reset(context)
