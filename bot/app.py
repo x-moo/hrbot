@@ -203,7 +203,7 @@ def _render(spec, page, db):
                              extra=(*_download_rows(rows, current_chat.get()), back))
 
 
-def _push(token, chat, text, markup=None, edit_of=None):
+def _push(token, chat, text, markup=None, edit_of=None, plain=False):
     """Send a screen, or edit it in place. Falls back to plain text on parse errors."""
     if markup:
         with _DOWNLOAD_LOCK:
@@ -212,7 +212,9 @@ def _push(token, chat, text, markup=None, edit_of=None):
                     data = button.get('callback_data', '')
                     if data.startswith('item:') and data[5:] in _DOWNLOADS:
                         _DOWNLOADS[data[5:]]['parent'] = (text, markup)
-    payload = {"chat_id": chat, "text": translate(text), "parse_mode": "Markdown", **NO_PREVIEW}
+    payload = {"chat_id": chat, "text": text if plain else translate(text), **NO_PREVIEW}
+    if not plain:
+        payload['parse_mode'] = 'Markdown'
     if markup:
         payload["reply_markup"] = localize_markup(markup)
 
@@ -316,7 +318,7 @@ def _screen_year(db, y):
     if not months:
         return f"No data for {y}.", years_markup(db)
     names = {"audio": "🎵 audio", "video": "🎥 video"}
-    per = " · ".join(f"{names.get(k, k)}: {c:,}" for k, c in sorted(db.year_stats(y)))
+    per = " · ".join(f"{names.get(k, k)}: {c:,}" for k, c in sorted(db.year_stats(y), key=lambda row: row[0] or ''))
     total = sum(n for _, n in months)
     return (f"🗓 *{y}* — {total:,} URLs\n{per}\nPilih bulan:",
             months_markup(db, y))
@@ -385,7 +387,7 @@ def _handle_callback(cb, db, token):
         buttons.append({'text': '⬇️ Download', 'callback_data': 'get:' + key})
         markup = _mk([buttons, [{'text': '⬅️ Back', 'callback_data': 'list:' + key}]])
         name = record.get('fname') or record.get('slug') or 'Recording'
-        _push(token, chat, name, markup, edit_of=message_id)
+        _push(token, chat, name, markup, edit_of=message_id, plain=True)
         return
 
     if data.startswith('get:'):
