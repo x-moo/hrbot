@@ -1,109 +1,76 @@
-# haramain-tools — media-archive dump pipeline + Telegram bot
+# Haramain tools
 
-Two parts in one repo:
+Harvest media links from haramain.info, import the catalog into SQLite, and serve it through a Telegram bot. The optional leech tool downloads files with aria2c and uploads them over MTProto.
 
-```
-├── bot.py               # Telegram bot (Bot API, repo root)
-├── bot.sh               # service control: init / run / start / stop / restart
-├── leech.py             # download a URL (aria2c) + upload via MTProto
-├── generate_session.py  # one-time helper for USER_SESSION_STRING
-├── import_dump.py       # dump tree -> SQLite
-├── .env.example         # BOT_TOKEN / DB_PATH / POLL_SEC + leech keys
-├── haramain-bot.service # systemd unit
-├── BOT.md               # bot usage
-├── LEECH.md             # leech usage (MTProto, >50 MB files)
-├── requirements.txt
-└── scripts/             # harvest pipeline: haramain.info -> dump tree
-```
+## Repository layout
 
-Full flow: **pipeline builds the dump -> import into SQLite -> bot serves users.**
-
-```
-bot.sh init  ->  haramain/  ->  import_dump.py  ->  archive.db  ->  bot.sh run
- (harvest)      (dump tree)     (import)          (sqlite)       (telegram)
+```text
+archive/       SQLite importer and read-only query repository
+bot/           Telegram application and Bot API transport
+leech/         CLI orchestration, downloader, formatting and session helper
+pipeline/      Sitemap, RSS, page scraping, dump building and link checks
+deploy/        systemd service template
+docs/          Bot, leech and pipeline guides
+tests/         Offline integration and unit tests
+scripts/       Compatibility wrappers for the old pipeline commands
+config.py      Shared .env loader
+bot.sh         Bootstrap and service control
 ```
 
-## Quick start
+Root Python scripts remain as compatibility entry points. Implementation belongs in the directories above.
+
+## Setup and run
+
+Run these commands from the repository root:
 
 ```bash
-# 1. build the archive: harvest (4-8 h on a 500 MB server; resumable,
-#    safe to stop) + import into sqlite (~20 MB db)
-./bot.sh init
-
-# 2. token from @BotFather -> .env
-cp .env.example .env && nano .env
-#    (dependencies: ./bot.sh run|start installs requirements.txt itself)
-
-# 3. run (foreground; use `./bot.sh start` for background)
-./bot.sh run
+python3 -m venv .venv
+mkdir -p .cache/tmp
+TMPDIR="$PWD/.cache/tmp" .venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env
+# Edit .env with your bot configuration.
+PYTHON="$PWD/.venv/bin/python" bash bot.sh init
+PYTHON="$PWD/.venv/bin/python" bash bot.sh run
 ```
 
-For files the hosted Bot API refuses (anything above 50 MB) use the MTProto
-leech instead — see `LEECH.md`:
+`init` harvests the archive if the database is missing. Set `SWEEP=1` to include the slower page scrape. `start`, `stop`, and `restart` manage a background process; logs and its pidfile remain in the repository root.
+
+The original entry points still work:
 
 ```bash
+python3 bot.py
+python3 import_dump.py --dump haramain --db archive.db
 python3 leech.py https://example.com/lecture.mp3 -c @archive
+python3 generate_session.py
+bash scripts/run.sh build
 ```
 
-Service management: `./bot.sh start|stop|restart` (pidfile `bot.pid`,
-log `bot.log`). For production you can instead use
-`haramain-bot.service` (systemd, auto-restart, MemoryMax=150M).
-Bot commands are documented in `BOT.md`.
+Canonical module commands are `python3 -m bot.app`, `python3 -m archive.import_dump`, `python3 -m leech.cli`, and `python3 -m leech.generate_session`. Run the pipeline with `bash pipeline/run.sh <stage>`.
 
-## Directory map
+## Configuration and runtime files
 
-### scripts/ — pipeline (details: scripts/README.md)
+`.env` is read from the repository root, with the current directory as fallback; existing process environment values win. See [.env.example](.env.example).
 
-| # | script | role |
-|---|--------|------|
-| 1 | `sitemap_posts.py` | ground truth: every post URL from the sitemap |
-| 2 | `feed_dump.py` | bulk via RSS (`global` + `fill` for months with gaps) |
-| 3 | `scrape_pages.py` | per-page fallback for posts no feed serves (`probe` -> `sweep` -> `residue`) |
-| 4 | `build_dump.py` | builds the dump tree + assertions |
-| 5 | `check_links.py` | live-link percentage + histograms |
-| 6 | `by_label.py` + `dump_all_groups.sh` | per-category (sidebar menu) |
-| - | `common.py` | media regexes, host exclusions, `classify()`, `unglue()` |
-| - | `run.sh` | runs every pipeline stage (called by `bot.sh init`) |
+Default runtime paths remain compatible: `archive.db`, `downloads/`, `work/`, `haramain/`, `bot.log`, and `bot.pid` live beneath the repository root. They are ignored by Git. Page-fetch scratch files are created in the working directory and cleaned up; label-export scratch files stay beside the pipeline scripts. Neither pipeline uses `/tmp`.
 
-The root `bot.sh` wraps init/bootstrap plus background service control:
-`init | run | start | stop | restart`.
+`WORK` and `OUT` override pipeline paths; use absolute paths for overrides. `DB_PATH`, `DOWNLOAD_DIR`, `PIDFILE`, and `LOGFILE` configure the other runtime locations. The dump builder replaces its output directory: use a dedicated directory for `OUT`.
 
-### bot (repo root)
+## Development
 
-| file | role |
-|------|------|
-| `bot.py` | polling loop, reads `.env`, answers commands (`/dl` included) |
-| `import_dump.py` | dump tree -> SQLite |
-| `.env.example` | `BOT_TOKEN` / `DB_PATH` / `POLL_SEC` template |
-| `haramain-bot.service` | systemd unit |
-| `requirements.txt` | `requests` + `kurigram`/`tgcrypto` (leech) |
+```bash
+mkdir -p .cache/tmp
+python3 -m unittest discover -s tests -v
+python3 -m compileall -q archive bot leech pipeline config.py
+bash -n bot.sh pipeline/*.sh scripts/*.sh
+```
 
-### leech (repo root)
+Tests use local fixtures and keep temporary directories in `.cache/` beneath this checkout. No Telegram credentials or live archive are required. Install `requirements.txt` first.
 
-| file | role |
-|------|------|
-| `leech.py` | aria2c download -> MTProto upload (2 GB / 4 GB Premium) |
-| `generate_session.py` | mints `USER_SESSION_STRING` for the user session |
-| `LEECH.md` | flags, limits, behaviour |
+## Guides
 
-The Bot API cannot upload past 50 MB; `leech.py` bypasses that by talking
-MTProto directly. It only leeches — no mirroring to Drive/rclone/cloud hosts.
+- [Bot commands and operation](docs/BOT.md)
+- [Leech configuration and CLI](docs/LEECH.md)
+- [Harvest pipeline](docs/pipeline.md)
+- [systemd template](deploy/haramain-bot.service)
 
-## Figure targets (500 MB RAM / 1 GB disk server)
-
-| item | value |
-|---|---|
-| posts (sitemap) | ~49,580 |
-| temporary feed XML | ~109 MB -> **delete after build** |
-| final dump (text) | ~44 MB < 100 MB |
-| archive.db (100K rows) | ~20 MB |
-| bot RAM | ~17 MB |
-| full sweep | 3.6-8 h, resumable |
-
-## Notes
-
-- A live link is not the same as an extracted one: old hosts (4shared,
-  veoh) are mostly dead; `mirrors.quranicaudio.com` is the active one.
-  Measure with `scripts/check_links.py haramain -n 120`.
-- Updating the archive = re-run the pipeline, then re-import. The bot
-  **does not need a restart** (SQLite is opened read-only per query).
+The service template must be edited for your checkout and Python interpreter. Live scraping, Telegram polling, and uploads require network access and appropriate configuration; they are not part of the offline test suite.

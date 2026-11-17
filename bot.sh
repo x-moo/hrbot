@@ -25,7 +25,6 @@ LOGFILE=${LOGFILE:-$PWD/bot.log}
 BOOT_WAIT=10   # seconds to wait for the background bot to die
 
 # panels often drop the exec bit on upload -> never depend on it
-find scripts -maxdepth 1 -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
 
 pid_live() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
 
@@ -41,14 +40,14 @@ running_pid() {
 init_ready() {
   if [ "${BOOTSTRAP:-1}" != "0" ] && [ ! -f "$DB" ]; then
     echo "[init] $DB missing -> harvesting via feed (resumable, safe to stop)"
-    ( cd scripts && bash run.sh sitemap ) || exit 1
-    ( cd scripts && bash run.sh feed )    || exit 1
+    ( cd pipeline && bash run.sh sitemap ) || exit 1
+    ( cd pipeline && bash run.sh feed )    || exit 1
     if [ "${SWEEP:-0}" = "1" ]; then
       echo "[init] SWEEP=1 -> page-sweep (3-8 h)"
-      ( cd scripts && bash run.sh sweep ) || exit 1
+      ( cd pipeline && bash run.sh sweep ) || exit 1
     fi
-    ( cd scripts && bash run.sh build )   || exit 1
-    "$PY" import_dump.py --dump "$DUMP" --db "$DB" || exit 1
+    ( cd pipeline && bash run.sh build )   || exit 1
+    "$PY" archive/import_dump.py --dump "$DUMP" --db "$DB" || exit 1
   else
     [ -f "$DB" ] && echo "[init] skip ($DB already exists)" \
                   || echo "[init] skip (BOOTSTRAP=0, $DB not rebuilt)"

@@ -16,7 +16,7 @@ pip install -r requirements.txt
 
 # 1. import the dump (built by build_dump.py) into sqlite — or simply
 #    run `./bot.sh init` from the repo root, which does it for you
-python3 import_dump.py --dump ../haramain --db archive.db
+python3 import_dump.py --dump haramain --db archive.db
 
 # 2. get a token from @BotFather -> put it in .env
 cp .env.example .env
@@ -123,10 +123,10 @@ satisfied and pip-install whatever is missing (set `INSTALL_DEPS=0` to skip
 that, e.g. on a machine with no package index). `init` and `stop` never
 touch pip.
 
-or use systemd (see `haramain-bot.service`).
+or use systemd (see `deploy/haramain-bot.service`).
 
 ## Updating the archive
 
-Re-run the dump pipeline (`../scripts/run.sh all`), then
-`python3 import_dump.py --dump ../haramain` again. The bot needs no
+Re-run the dump pipeline (`bash pipeline/run.sh all`), then
+`python3 import_dump.py --dump haramain` again. The bot needs no
 restart — the DB is opened read-only on every query.

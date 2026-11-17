@@ -1,4 +1,4 @@
-# scripts/ — haramain.info media-archive pipeline
+# pipeline/ — haramain.info media-archive pipeline
 
 Reusable, stage-by-stage tools for harvesting every media URL from a
 Blogger archive (built for haramain.info, works for any Blogger site).
@@ -46,8 +46,7 @@ sitemap  →  feed  →  reconcile  →  page-sweep  →  build  →  verify
 - Every fetch uses `curl --compressed` (undecoded gzip extracts zero
   matches, which reads exactly like "no media on this page").
 - Parallel fetches use per-task temp files (a shared path races silently).
-- Page-fetch temp files land in `$TMPDIR` (or the working directory): on a
-  small-disk box, point `TMPDIR` at the dump volume, not a busy `/tmp`.
+- Page-fetch scratch files stay in the current working directory and are removed after each fetch. Label-export scratch files stay in `pipeline/` and are removed on exit.
 - URL hygiene lives in `common.py`: `unglue()` splits jammed hrefs,
   nested players (`?theFile=<url>`) are unwrapped, literal spaces in
   broken `src=` attrs become `%20`.
