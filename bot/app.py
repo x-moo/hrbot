@@ -20,6 +20,7 @@ Config (.env next to the script, or env vars):
     LONGPOLL_SEC    long-poll timeout       (default: 25)
 """
 import itertools
+from contextvars import copy_context
 import os
 import re
 import sqlite3
@@ -31,6 +32,18 @@ from pathlib import Path
 from config import load_env
 
 from bot.telegram import NO_PREVIEW, TgError, tg_call, send, send_long
+from bot.i18n import Preferences, language, translate, localize_markup
+
+preferences = Preferences()
+from bot.commands import configure_menu
+
+
+def _configure_menu(token, **options):
+    """Menu setup failure must not prevent normal bot operation."""
+    try:
+        configure_menu(token, tg_call, **options)
+    except (TgError, RuntimeError) as error:
+        print(f'command menu setup failed: {error}', flush=True)
 
 HERE = Path(__file__).resolve().parents[1]
 DEFAULT_DB = HERE / "archive.db"
@@ -118,7 +131,8 @@ def menu_markup():
          {"text": "🗓 Year", "callback_data": "c:years"}],
         [{"text": "📊 Stat", "callback_data": "c:stat"},
          {"text": "⬇️ /dl", "callback_data": "c:dl"}],
-        [{"text": "❓ Help", "callback_data": "c:help"}],
+        [{"text": "❓ Help", "callback_data": "c:help"},
+         {"text": "🌐 Language", "callback_data": "c:language"}],
     ])
 
 
@@ -173,9 +187,9 @@ def _render(spec, page, db):
 
 def _push(token, chat, text, markup=None, edit_of=None):
     """Send a screen, or edit it in place. Falls back to plain text on parse errors."""
-    payload = {"chat_id": chat, "text": text, "parse_mode": "Markdown", **NO_PREVIEW}
+    payload = {"chat_id": chat, "text": translate(text), "parse_mode": "Markdown", **NO_PREVIEW}
     if markup:
-        payload["reply_markup"] = markup
+        payload["reply_markup"] = localize_markup(markup)
 
     if edit_of is not None:
         try:
@@ -216,6 +230,12 @@ def _screen_menu(db):
             "(/latest, /search, /date, /year, /stat, /dl).\n"
             "Hasil pencarian muncul 5 per halaman — tombol ⬅️ Back / Next ➡️.",
             menu_markup())
+
+
+def _screen_language():
+    return ('🌐 Choose language / Pilih bahasa', _mk([
+        [{'text': '🇬🇧 English', 'callback_data': 'lang:en'},
+         {'text': '🇮🇩 Indonesia', 'callback_data': 'lang:id'}], [HOME]]))
 
 
 def _screen_help(db):
@@ -301,7 +321,7 @@ def _handle_callback(cb, db, token):
     def answer(text=None, alert=False):
         payload = {"callback_query_id": cb.get("id")}
         if text:
-            payload.update({"text": text, "show_alert": alert})
+            payload.update({"text": translate(text), "show_alert": alert})
         try:
             tg_call(token, "answerCallbackQuery", payload)
         except TgError as e:
@@ -309,6 +329,8 @@ def _handle_callback(cb, db, token):
 
     def screen():
         """(text, markup) for a c: tap, or None when it is a no-op."""
+        if data == "c:language":
+            return _screen_language()
         if data == "c:menu":
             return _screen_menu(db)
         if data == "c:help":
@@ -331,6 +353,17 @@ def _handle_callback(cb, db, token):
 
     if chat is None or message_id is None:
         answer()
+        return
+
+    if data in ("lang:en", "lang:id"):
+        code = data.split(":")[1]
+        preferences.set(chat, code)
+        language.set(code)
+        answer()
+        _configure_menu(token, chat=chat, code=code,
+                        private=(msg.get('chat') or {}).get('type') == 'private')
+        text, markup = _screen_menu(db)
+        _push(token, chat, text, markup, edit_of=message_id)
         return
 
     if data.startswith("c:"):
@@ -430,7 +463,7 @@ def _run_leech(job, url, chat, name, split_size, thumb, as_doc, to_self):
         return
 
     def note(text):
-        job["lines"].append(text)
+        job["lines"].append(translate(text))
         del job["lines"][:-DL_LINES]
         _dl_status(job)
 
@@ -502,7 +535,7 @@ def start_leech(token, chat, url, name, split_size, thumb, as_doc, to_self):
     try:
         msg = tg_call(token, "sendMessage", {
             "chat_id": chat,
-            "text": f"⏳ #{job['id']} starting · {mask_url(url)}",
+            "text": translate(f"⏳ #{job['id']} starting · {mask_url(url)}"),
             "disable_notification": True,
             "link_preview_options": {"is_disabled": True}})
         job["message_id"] = msg["message_id"]
@@ -510,8 +543,8 @@ def start_leech(token, chat, url, name, split_size, thumb, as_doc, to_self):
         with _DL_POOL_LOCK:
             _DL_POOL.pop(job["id"], None)
         return (f"cannot post status: {e}", False)
-    threading.Thread(target=_run_leech,
-                     args=(job, url, chat, name, split_size, thumb, as_doc, to_self),
+    threading.Thread(target=copy_context().run,
+                     args=(_run_leech, job, url, chat, name, split_size, thumb, as_doc, to_self),
                      daemon=True).start()
     return (f"⬇️ #{job['id']} started · {mask_url(url)}", True)
 
@@ -546,6 +579,17 @@ def help_text():
 
 
 def handle_update(upd, db, token):
+    """Scope localization to this update, keeping chats independent."""
+    msg = (upd.get('callback_query') or {}).get('message') or upd.get('message') or upd.get('edited_message') or {}
+    chat = (msg.get('chat') or {}).get('id')
+    context = language.set(preferences.get(chat) if chat is not None else 'id')
+    try:
+        return _handle_update(upd, db, token)
+    finally:
+        language.reset(context)
+
+
+def _handle_update(upd, db, token):
     if upd.get("callback_query"):
         _handle_callback(upd["callback_query"], db, token)
         return
@@ -579,7 +623,13 @@ def handle_update(upd, db, token):
     cmd = parts[0].split("@")[0].lower()   # /search@Botname -> /search
     args = parts[1:]
 
-    if cmd in ("/start", "/help"):
+    if cmd in ("/language", "/lang"):
+        text, markup = _screen_language()
+        _push(token, chat, text, markup)
+    elif cmd in ("/start", "/help"):
+        if cmd == '/start':
+            _configure_menu(token, chat=chat, code=language.get(),
+                            private=msg.get('chat', {}).get('type') == 'private')
         out = _screen_menu(db) if cmd == "/start" else _screen_help(db)
         _push(token, chat, out[0], out[1])
     elif cmd == "/latest":
@@ -640,6 +690,7 @@ def main():
     (total, uniq, y0, y1), _ = db.stats()
     print(f"db: {total} rows, {uniq} unique, years {y0}-{y1}")
     prune_downloads()
+    _configure_menu(token)
 
     offset = 0            # next getUpdates offset; updates below it are confirmed
     print("polling...")

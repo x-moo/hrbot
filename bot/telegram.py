@@ -1,6 +1,7 @@
 """Bot API transport, retries and text delivery."""
 import time
 import requests
+from bot.i18n import translate
 
 API = "https://api.telegram.org/bot{token}/{method}"
 NO_PREVIEW = {"link_preview_options": {"is_disabled": True}}
@@ -74,10 +75,10 @@ def _send_one(token, chat, part, with_format):
 
 def send(token, chat, text):
     """Send Markdown text, falling back to plain text if parsing fails."""
-    for part in chunk_text([text]):
+    for part in chunk_text([translate(text)]):
         _send_one(token, chat, part, with_format=True)
 
 
 def send_long(token, chat, lines):
-    for part in chunk_text(lines):
+    for part in chunk_text([translate(line) for line in lines]):
         _send_one(token, chat, part, with_format=True)

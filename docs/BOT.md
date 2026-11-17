@@ -48,6 +48,26 @@ mengetik. Setiap layar punya baris `[ ⬅️ … ] [ 🔝 Menu ]` untuk naik lag
 
 ## Peta tombol
 
+Bot juga mengaktifkan tombol **Menu** bawaan Telegram di sebelah kolom pesan
+pada chat privat. Tombol ini membuka daftar `/start`, `/latest`, `/search`,
+`/date`, `/year`, `/stat`, `/dl`, `/language`, dan `/help`. Perintah yang
+memerlukan argumen tetap harus dilengkapi pengguna sebelum dikirim.
+Registrasi dilakukan saat startup dan `/start`; perubahan bahasa juga
+memperbarui deskripsi perintah untuk chat tersebut. Nama dan posisi tombol
+bawaan mengikuti aplikasi Telegram. Grup memakai daftar slash commands;
+pengaturan Menu Button khusus hanya didukung pada chat privat.
+
+Implementasi mengikuti [setMyCommands](https://core.telegram.org/bots/api#setmycommands)
+dan [setChatMenuButton](https://core.telegram.org/bots/api#setchatmenubutton),
+disertai pembacaan ulang konfigurasi. Kegagalan konfigurasi dicatat ke log
+dan tidak menghentikan polling.
+
+Menu menyediakan tombol 🌐 Bahasa / Language untuk memilih 🇬🇧 English atau
+🇮🇩 Indonesia. Bisa juga lewat `/language` atau `/lang`. Default Indonesia;
+pilihan berlaku per chat (bersama untuk anggota grup) dan disimpan di
+`preferences.db` pada root repository, terpisah dari database arsip agar
+bertahan setelah restart dan impor ulang. Direktori repository harus writable.
+
 ```
 /start
  ├─ 🆕 Latest        → 5 terbaru
