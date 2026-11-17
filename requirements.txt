@@ -1,0 +1,4 @@
+requests>=2.28
+# MTProto leeching only (leech.py) — bot.py alone does not need these
+kurigram>=2.2
+tgcrypto>=1.2

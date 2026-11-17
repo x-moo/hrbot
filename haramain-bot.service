@@ -1,0 +1,16 @@
+[Unit]
+Description=Haramain archive Telegram bot
+After=network-online.target
+
+[Service]
+Type=simple
+# EDIT the path to match your server layout
+WorkingDirectory=/opt/haramain-bot
+ExecStart=/usr/bin/python3 /opt/haramain-bot/bot.py
+Restart=always
+RestartSec=5
+# hard memory cap for a 500 MB box
+MemoryMax=150M
+
+[Install]
+WantedBy=multi-user.target
