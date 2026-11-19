@@ -19,6 +19,7 @@ Config (.env next to the script, or env vars):
     POLL_SEC        poll interval           (default: 3)
     LONGPOLL_SEC    long-poll timeout       (default: 25)
     POLL_BACKOFF_MAX_SEC maximum network-error retry wait (default: 300)
+    DB_UPDATE_TIME daily database update time in UTC (default: disabled)
 """
 import itertools
 from concurrent.futures import ThreadPoolExecutor
@@ -28,6 +29,7 @@ import secrets
 import os
 import re
 import sqlite3
+import subprocess
 from archive.repository import Archive, PAGE_SIZE
 import sys
 import threading
@@ -740,6 +742,16 @@ def main():
                  "Run first: python3 import_dump.py --dump ../haramain")
 
     db = Archive(db_path)
+    update_time = os.environ.get("DB_UPDATE_TIME", "").strip()
+    if update_time:
+        from bot.scheduler import start_daily_worker
+        try:
+            start_daily_worker(update_time, lambda: subprocess.run(
+                ["bash", str(ROOT / "bot.sh"), "update"], check=True, cwd=ROOT),
+                logger=lambda message: print(message, flush=True))
+        except ValueError as exc:
+            sys.exit(f"invalid DB_UPDATE_TIME (use HH:MM UTC): {exc}")
+        print(f"daily database update scheduled at {update_time} UTC", flush=True)
     (total, uniq, y0, y1), _ = db.stats()
     print(f"db: {total} rows, {uniq} unique, years {y0}-{y1}")
     prune_downloads()

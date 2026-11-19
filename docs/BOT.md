@@ -134,6 +134,6 @@ or use systemd (see `deploy/haramain-bot.service`).
 
 ## Updating the archive
 
-Re-run the dump pipeline (`bash pipeline/run.sh all`), then
-`python3 import_dump.py --dump haramain` again. The bot needs no
-restart — the DB is opened read-only on every query.
+Set `DB_UPDATE_TIME=03:00` in `.env` to refresh the archive daily at 03:00 UTC while the foreground bot is running. No crontab or second terminal is needed. Leave it blank to disable. Updates require the bot process to remain alive.
+
+To update manually, run `bash bot.sh update`. The bot needs no restart — the DB is opened read-only on every query.

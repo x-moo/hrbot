@@ -21,17 +21,14 @@ class ConfigTests(unittest.TestCase):
 
     def test_daily_database_update_schedule_is_documented(self):
         example = (ROOT / ".env.example").read_text()
-        self.assertIn("DB_UPDATE_CRON=", example)
-        script = (ROOT / "bot.sh").read_text()
-        self.assertIn("cron-install", script)
-        self.assertIn("cron-remove", script)
+        self.assertIn("DB_UPDATE_TIME=", example)
+        self.assertNotIn("DB_UPDATE_CRON", example)
 
-    def test_env_example_only_lists_primary_bot_and_upload_settings(self):
+    def test_env_example_only_lists_required_runtime_overrides(self):
         example = (ROOT / ".env.example").read_text()
         keys = {line.split("=", 1)[0] for line in example.splitlines()
                 if line and not line.startswith("#") and "=" in line}
         self.assertEqual(keys, {
             "BOT_TOKEN", "DB_PATH", "POLL_SEC", "LONGPOLL_SEC",
-            "POLL_BACKOFF_MAX_SEC", "DB_UPDATE_CRON", "TELEGRAM_API",
-            "TELEGRAM_HASH", "USER_SESSION_STRING",
+            "POLL_BACKOFF_MAX_SEC", "DB_UPDATE_TIME",
         })
