@@ -23,6 +23,7 @@ import argparse
 import collections
 import glob
 import html
+import hashlib
 import json
 import os
 import re
@@ -61,7 +62,10 @@ def norm_label(s):
 
 
 def slug(name):
-    return re.sub(r"[^\w\- ]+", "_", name, flags=re.U).strip().replace(" ", "_")
+    base = re.sub(r"[^\w\- ]+", "_", name).strip().replace(" ", "_")
+    base = base.encode("utf-8")[:100].decode("utf-8", errors="ignore") or "label"
+    digest = hashlib.sha256(name.encode("utf-8")).hexdigest()[:16]
+    return f"{base}-{digest}"
 
 
 def parse_menu(page_html):
