@@ -6,10 +6,13 @@ from unittest.mock import patch
 
 from pipeline import feed_dump
 
+CACHE = Path(__file__).resolve().parents[1] / ".cache"
+CACHE.mkdir(exist_ok=True)
+
 
 class FeedRefreshTests(unittest.TestCase):
     def test_refreshes_cached_global_and_month_pages(self):
-        with tempfile.TemporaryDirectory() as temp:
+        with tempfile.TemporaryDirectory(dir=CACHE) as temp:
             base = Path(temp)
             global_dir = base / "global"
             global_dir.mkdir()
