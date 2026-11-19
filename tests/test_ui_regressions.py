@@ -6,6 +6,14 @@ from bot import app
 
 
 class UIRegressions(unittest.TestCase):
+    def test_record_list_button_shows_only_the_filename(self):
+        name = 'SheikhBarhaji_Isha-2025-11-29.mp3'
+        row = {'fname': name, 'url': 'https://example/audio.mp3'}
+        with patch.object(app, '_DOWNLOADS', {}):
+            [[button]] = app._download_rows([row], 7)
+        self.assertEqual(button['text'], name)
+        self.assertTrue(button['callback_data'].startswith('item:'))
+
     def test_year_screen_with_real_sqlite_rows(self):
         connection = sqlite3.connect(':memory:')
         connection.row_factory = sqlite3.Row

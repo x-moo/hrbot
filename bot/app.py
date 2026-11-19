@@ -69,7 +69,7 @@ def _remember_downloads(rows, chat):
 
 def _download_rows(rows, chat):
     rows = list(rows)
-    return [[{'text': '🎧 ' + (row['fname'] or 'file')[:60], 'callback_data': 'item:' + key}]
+    return [[{'text': (row['fname'] or 'file')[:60], 'callback_data': 'item:' + key}]
             for row, key in zip(rows, _remember_downloads(rows, chat)) if key]
 
 
