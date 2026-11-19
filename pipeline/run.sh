@@ -28,34 +28,34 @@ mkdir -p "$WORK"
 
 case "${1:-all}" in
   sitemap)
-    $PY sitemap_posts.py --site "$SITE" -o "$POSTS"
+    "$PY" sitemap_posts.py --site "$SITE" -o "$POSTS"
     ;;
   feed)
     # NB: `global` paginates serially (no -j flag exists there); only `fill`
     # takes -j. Passing -j to global aborts the whole stage with argparse error.
-    $PY feed_dump.py global -d "$FEEDS" --site "$SITE"
-    $PY feed_dump.py fill   -d "$FEEDS" --site "$SITE" --posts "$POSTS" -j 4
+    "$PY" feed_dump.py global -d "$FEEDS" --site "$SITE"
+    "$PY" feed_dump.py fill   -d "$FEEDS" --site "$SITE" --posts "$POSTS" -j 4
     ;;
   scrape)
     # gate on a sample first -- a broken regex and a site with no media
     # both look like zero rows at scale (see docs/pipeline.md step 3)
-    $PY scrape_pages.py probe "$POSTS" -n 30
+    "$PY" scrape_pages.py probe "$POSTS" -n 30
     ;;
   sweep)
-    $PY scrape_pages.py sweep "$POSTS" -o "$PAGES" -j 6
-    $PY scrape_pages.py residue "$POSTS" -o "$PAGES" \
+    "$PY" scrape_pages.py sweep "$POSTS" -o "$PAGES" -j 6
+    "$PY" scrape_pages.py residue "$POSTS" -o "$PAGES" \
         --empty-out "$WORK/posts_without_media.txt" \
         --unfetchable-out "$WORK/posts_unfetchable.txt"
     ;;
   build)
-    # FEED_ARGS is a bash array of --feeds pairs; plain $FEED_ARGS keeps only
-    # the first word, so expand it properly:
-    $PY build_dump.py --posts "$POSTS" "${FEED_ARGS[@]}" \
-        --page-tsv "$PAGES" --out "$OUT" --site "$SITE"
+    PAGE_ARGS=()
+    if [ -f "$PAGES" ]; then PAGE_ARGS=(--page-tsv "$PAGES"); fi
+    "$PY" build_dump.py --posts "$POSTS" "${FEED_ARGS[@]}" \
+        "${PAGE_ARGS[@]}" --out "$OUT" --site "$SITE"
     ;;
   check)
-    $PY check_links.py "$OUT" --hist
-    $PY check_links.py "$OUT" -n 120
+    "$PY" check_links.py "$OUT" --hist
+    "$PY" check_links.py "$OUT" -n 120
     ;;
   all)
     bash "$ROOT/pipeline/run.sh" sitemap
