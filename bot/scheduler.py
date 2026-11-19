@@ -1,13 +1,14 @@
 """Run one daily maintenance callback without blocking the bot polling loop."""
 from datetime import datetime, time as wall_time, timedelta, timezone
 import threading
+import re
 
 
 def next_daily_run(now, hhmm):
     """Return the next UTC occurrence of an HH:MM daily schedule."""
+    if not re.fullmatch(r"[0-9]{2}:[0-9]{2}", hhmm):
+        raise ValueError("daily update time must use HH:MM UTC")
     parsed = wall_time.fromisoformat(hhmm)
-    if parsed.second or parsed.microsecond:
-        raise ValueError("daily update time must use HH:MM")
     target = now.replace(hour=parsed.hour, minute=parsed.minute,
                          second=0, microsecond=0)
     if target <= now:
@@ -17,9 +18,7 @@ def next_daily_run(now, hhmm):
 
 def start_daily_worker(hhmm, callback, logger=print, clock=None, sleeper=None):
     """Start a daemon worker that calls callback daily at the configured UTC time."""
-    parsed = wall_time.fromisoformat(hhmm)
-    if parsed.second or parsed.microsecond:
-        raise ValueError("daily update time must use HH:MM")
+    next_daily_run(datetime.now(timezone.utc), hhmm)  # validate before starting thread
     clock = clock or (lambda: datetime.now(timezone.utc))
     sleeper = sleeper or threading.Event().wait
 
