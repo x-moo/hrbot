@@ -18,6 +18,8 @@ import re
 import time
 import urllib.parse
 import urllib.request
+from pathlib import Path
+from xml.etree import ElementTree
 
 ITEM_RE = re.compile(r"<item>", re.I)
 LINK_RE = re.compile(r"<link>\s*([^<]+?)\s*</link>", re.I)
@@ -49,6 +51,8 @@ def feed_url(site, page_size, start, pmin=None, pmax=None):
 
 def save(path, xml):
     """Write atomically; return the number of items on this page."""
+    if ElementTree.fromstring(xml).tag != "rss":
+        raise ValueError("expected an RSS feed")
     n = len(ITEM_RE.findall(xml))
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
@@ -57,21 +61,28 @@ def save(path, xml):
     return n
 
 
+def prune_pages(directory, pattern, retained):
+    for path in Path(directory).glob(pattern):
+        if path.is_file() and path.name not in retained:
+            path.unlink()
+
+
 def cmd_global(args):
     os.makedirs(args.dir, exist_ok=True)
     start, pages, items = 1, 0, 0
+    retained = set()
     while start <= args.max_index:
         out = os.path.join(args.dir, f"f_{start:06d}.xml")
-        if os.path.exists(out) and os.path.getsize(out) > 0:
-            n = len(ITEM_RE.findall(open(out, errors="ignore").read()))
-        else:
-            xml = fetch(feed_url(args.site, args.page_size, start))
-            n = save(out, xml)
-            pages, items = pages + 1, items + n
-            print(f"  page start={start} items={n}", flush=True)
+        xml = fetch(feed_url(args.site, args.page_size, start))
+        n = save(out, xml)
+        retained.add(os.path.basename(out))
+        pages += 1
+        items += n
+        print(f"  page start={start} items={n}", flush=True)
         if n < args.page_size:
             break
         start += args.page_size
+    prune_pages(args.dir, "f_[0-9]*.xml", retained)
     print(f"global: {pages} pages fetched, {items} items, dir={args.dir}")
 
 
@@ -82,11 +93,11 @@ def month_range(ym):
 
 
 def cmd_fill(args):
-    posts = [l.strip() for l in open(args.posts) if l.strip()]
+    posts = [line.strip() for line in Path(args.posts).read_text(encoding="utf-8").splitlines() if line.strip()]
     have = set()
     for fn in os.listdir(args.dir):
         if fn.endswith(".xml"):
-            t = open(os.path.join(args.dir, fn), errors="ignore").read()
+            t = (Path(args.dir) / fn).read_text(encoding="utf-8", errors="ignore")
             have.update(m.group(1).strip() for m in LINK_RE.finditer(t))
     missing = [p for p in posts if p not in have]
     months = sorted({f"{m.group(1)}-{m.group(2)}" for p in missing
@@ -96,17 +107,18 @@ def cmd_fill(args):
     def fill_month(ym):
         pmin, pmax = month_range(ym)
         start, pages = 1, 0
+        prefix = ym.replace('-', '') + '_p'
+        retained = set()
         while start <= args.max_index:
-            out = os.path.join(args.dir, f"{ym.replace('-', '')}_p{start:05d}.xml")
-            if os.path.exists(out) and os.path.getsize(out) > 0:
-                n = len(ITEM_RE.findall(open(out, errors="ignore").read()))
-            else:
-                n = save(out, fetch(feed_url(args.site, args.page_size, start, pmin, pmax)))
-                pages += 1
-                time.sleep(1)
+            out = os.path.join(args.dir, f"{prefix}{start:05d}.xml")
+            n = save(out, fetch(feed_url(args.site, args.page_size, start, pmin, pmax)))
+            retained.add(os.path.basename(out))
+            pages += 1
+            time.sleep(1)
             if n < args.page_size:
                 break
             start += args.page_size
+        prune_pages(args.dir, f"{prefix}[0-9]*.xml", retained)
         return ym, pages
 
     ok = 0
