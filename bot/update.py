@@ -28,8 +28,14 @@ def update_lock(path=None):
 def _perform_update():
     """Run the archive pipeline and import using the current process config."""
     env = os.environ.copy()
-    env.setdefault("DB", env.get("DB_PATH", "archive.db"))
-    env.setdefault("DUMP", "haramain")
+    def absolute(value):
+        path = Path(value)
+        return str(path if path.is_absolute() else ROOT / path)
+    env['PYTHON'] = sys.executable
+    env['DB'] = absolute(env.get('DB') or env.get('DB_PATH') or 'archive.db')
+    env['DUMP'] = absolute(env.get('DUMP') or env.get('OUT') or 'haramain')
+    env['OUT'] = env['DUMP']
+    env['WORK'] = absolute(env.get('WORK') or 'work')
     if os.getenv("SWEEP", "0") == "1":
         stages = ("sitemap", "feed", "sweep", "build")
     else:
@@ -56,5 +62,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import sys
     main()

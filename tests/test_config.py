@@ -19,10 +19,7 @@ class ConfigTests(unittest.TestCase):
                 self.assertEqual(os.environ['EXISTING'], 'process')
                 self.assertEqual(os.environ['NEW_VALUE'], 'hello')
 
-    def test_daily_update_runner_is_importable_without_missing_ROOT(self):
-        from bot.app import ROOT, HERE
-        self.assertEqual(ROOT, HERE)
-
+    def test_daily_database_update_schedule_is_documented(self):
         example = (ROOT / ".env.example").read_text()
         self.assertIn("DB_UPDATE_TIME=", example)
         self.assertNotIn("DB_UPDATE_CRON", example)

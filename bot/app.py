@@ -81,7 +81,6 @@ def _configure_menu(token, **options):
         print(f'command menu setup failed: {error}', flush=True)
 
 HERE = Path(__file__).resolve().parents[1]
-ROOT = HERE
 DEFAULT_DB = HERE / "archive.db"
 DL_LINES = 10          # lines kept in a per-download status message
 DL_JOBS = 2            # concurrent downloads per chat

@@ -4,6 +4,12 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 PY=${PYTHON:-python3}
+# Parse .env as data, never source it as shell code. NUL-delimited values
+# preserve spaces and cannot inject additional shell commands.
+while IFS= read -r -d '' key && IFS= read -r -d '' value; do
+  export "$key=$value"
+done < <("$PY" -c 'import os, sys; from config import load_env; load_env(); keys=("DB_PATH","DB","DUMP","OUT","WORK","SWEEP","BOOTSTRAP","PIDFILE","LOGFILE","INSTALL_DEPS"); [sys.stdout.buffer.write((k+"\0"+os.environ[k]+"\0").encode()) for k in keys if k in os.environ]')
+export PYTHON="$PY"
 DB=${DB:-${DB_PATH:-archive.db}}
 DUMP=${DUMP:-haramain}
 PIDFILE=${PIDFILE:-$PWD/bot.pid}
@@ -23,13 +29,7 @@ running_pid() {
 init_ready() {
   if [ "${BOOTSTRAP:-1}" != "0" ] && [ ! -f "$DB" ]; then
     echo "[init] $DB missing -> harvesting"
-    ( cd pipeline && bash run.sh sitemap ) || exit 1
-    ( cd pipeline && bash run.sh feed ) || exit 1
-    if [ "${SWEEP:-0}" = "1" ]; then
-      ( cd pipeline && bash run.sh sweep ) || exit 1
-    fi
-    ( cd pipeline && bash run.sh build ) || exit 1
-    "$PY" archive/import_dump.py --dump "$DUMP" --db "$DB" || exit 1
+    "$PY" -m bot.update || exit 1
   else
     [ -f "$DB" ] && echo "[init] skip ($DB already exists)" \
                   || echo "[init] skip (BOOTSTRAP=0, $DB not rebuilt)"

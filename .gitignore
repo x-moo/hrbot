@@ -17,3 +17,5 @@ work/
 haramain/
 .groups.*
 .pg_*.html
+
+.update.lock
