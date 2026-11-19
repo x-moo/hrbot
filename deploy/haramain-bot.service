@@ -4,6 +4,11 @@ After=network-online.target
 
 [Service]
 Type=simple
+# Create this unprivileged account and grant it write access to the checkout.
+User=haramain
+Group=haramain
+NoNewPrivileges=true
+UMask=0077
 # EDIT the path to match your server layout
 WorkingDirectory=/opt/haramain-bot
 ExecStart=/usr/bin/python3 /opt/haramain-bot/bot.py

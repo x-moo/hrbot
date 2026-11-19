@@ -53,7 +53,7 @@ Canonical module commands are `python3 -m bot.app`, `python3 -m archive.import_d
 
 Default runtime paths remain compatible: `archive.db`, `downloads/`, `work/`, `haramain/`, `bot.log`, and `bot.pid` live beneath the repository root. They are ignored by Git. Page-fetch scratch files are created in the working directory and cleaned up; label-export scratch files stay beside the pipeline scripts. Neither pipeline uses `/tmp`.
 
-`WORK` and `OUT` override pipeline paths; use absolute paths for overrides. `DB_PATH`, `DOWNLOAD_DIR`, `PIDFILE`, and `LOGFILE` configure the other runtime locations. The dump builder replaces its output directory: use a dedicated directory for `OUT`.
+`WORK` and `OUT` override pipeline paths; use absolute paths for overrides. `DB_PATH`, `DOWNLOAD_DIR`, `PIDFILE`, and `LOGFILE` configure the other runtime locations. The dump builder validates inputs and stages a replacement before publishing it. `OUT` must be a dedicated dump directory, not an input directory or the checkout. Failed builds keep the previous dump.
 
 Set `DB_UPDATE_TIME=03:00` in `.env` to refresh the archive daily at 03:00 UTC while the bot process is running. It needs no crontab or extra terminal. Updates do not run when the bot is stopped; `SWEEP=1` includes the slower page scrape.
 

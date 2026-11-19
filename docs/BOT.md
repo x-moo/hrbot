@@ -130,10 +130,21 @@ satisfied and pip-install whatever is missing (set `INSTALL_DEPS=0` to skip
 that, e.g. on a machine with no package index). `init` and `stop` never
 touch pip.
 
-or use systemd (see `deploy/haramain-bot.service`).
+Or use systemd (see `deploy/haramain-bot.service`). That system-wide template
+requires an existing unprivileged `haramain` user/group; edit `User`, `Group`,
+checkout path, and Python interpreter for your server, and grant that user write
+access to the repository/runtime files. Do not run the service as root.
 
 ## Updating the archive
 
-Set `DB_UPDATE_TIME=03:00` in `.env` to refresh the archive daily at 03:00 UTC while the foreground bot is running. No crontab or second terminal is needed. Leave it blank to disable. Updates require the bot process to remain alive.
+Set `DB_UPDATE_TIME=03:00` in `.env` to refresh the archive daily at 03:00 UTC while the foreground bot is running. No crontab or second terminal is needed. Leave it blank to disable. Updates require the bot process to remain alive. A missed schedule while stopped
+is not replayed on startup. New copies leave scheduling disabled until configured.
+`DB_UPDATE_CRON` and `cron-install` are no longer used.
 
-To update manually, run `bash bot.sh update`. The bot needs no restart — the DB is opened read-only on every query.
+Foreground hosting startup stays `bash bot.sh init && bash bot.sh run`.
+Manual refreshes and scheduled jobs share `.update.lock` and reject concurrent
+updates. Pipeline/import logs appear in the same console (or `bot.log` when
+started in background). A failed refresh is logged and the next attempt is the
+next daily schedule; no immediate retry storm is started.
+
+To update manually, run `bash bot.sh update`. The bot needs no restart — SQLite readers see the committed import on their next query.

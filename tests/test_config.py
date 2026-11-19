@@ -31,4 +31,5 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(keys, {
             "BOT_TOKEN", "DB_PATH", "POLL_SEC", "LONGPOLL_SEC",
             "POLL_BACKOFF_MAX_SEC", "DB_UPDATE_TIME",
+            "TELEGRAM_API", "TELEGRAM_HASH", "USER_SESSION_STRING",
         })
