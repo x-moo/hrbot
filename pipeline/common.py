@@ -25,6 +25,10 @@ MEDIA_RE = re.compile(
 
 YMD_RE = re.compile(r"(\d{4})/(\d{2})/")
 DEFAULT_SITE = "http://www.haramain.info"
+EXCLUDED_DOMAINS = ("youtube.com", "youtube-nocookie.com", "youtu.be", "ytimg.com",
+                    "google.com", "googlevideo.com", "googleusercontent.com",
+                    "googleapis.com", "gstatic.com", "ggpht.com")
+GOOGLE_COUNTRY_RE = re.compile(r"(?:^|\.)google\.(?:(?:co|com)\.)?[a-z]{2}\Z")
 
 
 def year_of(url):
@@ -39,9 +43,9 @@ def is_bad_host(url):
         hostname = (urlsplit(url).hostname or "").lower().rstrip(".")
     except ValueError:
         return False
-    return any(hostname == domain or hostname.endswith("." + domain)
-               for domain in ("youtube.com", "youtube-nocookie.com", "youtu.be",
-                              "google.com", "gstatic.com", "ytimg.com"))
+    return (bool(GOOGLE_COUNTRY_RE.search(hostname))
+            or any(hostname == domain or hostname.endswith("." + domain)
+                   for domain in EXCLUDED_DOMAINS))
 
 
 def host_of(url):
