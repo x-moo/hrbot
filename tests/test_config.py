@@ -18,3 +18,10 @@ class ConfigTests(unittest.TestCase):
                 self.assertTrue(load_env(Path(directory)))
                 self.assertEqual(os.environ['EXISTING'], 'process')
                 self.assertEqual(os.environ['NEW_VALUE'], 'hello')
+
+    def test_daily_database_update_schedule_is_documented(self):
+        example = (ROOT / ".env.example").read_text()
+        self.assertIn("DB_UPDATE_CRON=", example)
+        script = (ROOT / "bot.sh").read_text()
+        self.assertIn("cron-install", script)
+        self.assertIn("cron-remove", script)

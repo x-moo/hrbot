@@ -6,6 +6,8 @@
 #   bash bot.sh start     install missing deps, then run in the background
 #   bash bot.sh stop      stop the background bot
 #   bash bot.sh restart   stop, then start again
+#   bash bot.sh update    refresh archive and rebuild database
+#   bash bot.sh cron-install / cron-remove manage daily refresh schedule
 #
 # Env:
 #   INSTALL_DEPS=0  skip the pip check entirely (offline/air-gapped)
@@ -18,6 +20,10 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 PY=${PYTHON:-python3}
+# Read the schedule from the shared .env loader without evaluating shell input.
+if [ -z "${DB_UPDATE_CRON:-}" ]; then
+  DB_UPDATE_CRON=$("$PY" -c 'import os; from config import load_env; load_env(); print(os.getenv("DB_UPDATE_CRON", ""))' 2>/dev/null || true)
+fi
 DB=${DB:-${DB_PATH:-archive.db}}   # DB_PATH (bot.py's var) is accepted too
 DUMP=${DUMP:-haramain}
 PIDFILE=${PIDFILE:-$PWD/bot.pid}
@@ -110,6 +116,43 @@ cmd_stop() {
   echo "[stop] stopped"
 }
 
+cmd_update() {
+  echo "[update] refreshing archive"
+  ( cd pipeline && bash run.sh sitemap ) || exit 1
+  ( cd pipeline && bash run.sh feed ) || exit 1
+  if [ "${SWEEP:-0}" = "1" ]; then
+    echo "[update] SWEEP=1 -> page-sweep"
+    ( cd pipeline && bash run.sh sweep ) || exit 1
+  fi
+  ( cd pipeline && bash run.sh build ) || exit 1
+  "$PY" archive/import_dump.py --dump "$DUMP" --db "$DB"
+}
+
+cron_install() {
+  if [ -z "${DB_UPDATE_CRON:-}" ]; then
+    echo "[cron] set DB_UPDATE_CRON in .env first (example: 0 3 * * *)" >&2
+    exit 2
+  fi
+  local marker="# hrbot-database-update" root qroot qpy qdb qdump qlog cron_line current
+  root=$PWD
+  printf -v qroot '%q' "$root"
+  printf -v qpy '%q' "$(command -v "$PY")"
+  printf -v qdb '%q' "$DB"
+  printf -v qdump '%q' "$DUMP"
+  printf -v qlog '%q' "$root/db-update.log"
+  cron_line="$DB_UPDATE_CRON cd $qroot && PYTHON=$qpy DB=$qdb DUMP=$qdump BOOTSTRAP=1 bash $qroot/bot.sh update >>$qlog 2>&1 $marker"
+  current=$(crontab -l 2>/dev/null || true)
+  { printf '%s\n' "$current" | grep -Fv "$marker" || true; printf '%s\n' "$cron_line"; } | crontab -
+  echo "[cron] installed: $DB_UPDATE_CRON"
+}
+
+cron_remove() {
+  local marker="# hrbot-database-update" current
+  current=$(crontab -l 2>/dev/null || true)
+  { printf '%s\n' "$current" | grep -Fv "$marker" || true; } | crontab -
+  echo "[cron] removed"
+}
+
 
 # --- dependencies -------------------------------------------------------------
 # Distribution names, with importable aliases that also satisfy them. Using
@@ -193,6 +236,9 @@ ensure_deps() {
 
 case "${1:-}" in
   init)    init_ready ;;
+  update)  cmd_update ;;
+  cron-install) cron_install ;;
+  cron-remove) cron_remove ;;
   run)     cmd_run ;;
   start)   cmd_start ;;
   stop)    cmd_stop ;;
@@ -202,6 +248,9 @@ case "${1:-}" in
 Usage: bot.sh <command>
 
   init      build the archive (harvest + import) if the DB is missing
+  update    refresh the archive and rebuild the database
+  cron-install  install daily refresh from DB_UPDATE_CRON in .env
+  cron-remove   remove the daily refresh schedule
   run       install missing deps, then run the bot in the foreground
   start     install missing deps, then run the bot in the background
   stop      stop the background bot

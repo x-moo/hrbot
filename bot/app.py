@@ -18,6 +18,7 @@ Config (.env next to the script, or env vars):
     DB_PATH         path to archive.db      (default: next to this script)
     POLL_SEC        poll interval           (default: 3)
     LONGPOLL_SEC    long-poll timeout       (default: 25)
+    POLL_BACKOFF_MAX_SEC maximum network-error retry wait (default: 300)
 """
 import itertools
 from concurrent.futures import ThreadPoolExecutor
@@ -719,12 +720,18 @@ def _handle_update(upd, db, token):
         send(token, chat, "Unknown command. Use /help for the list.")
 
 
+def poll_retry_delay(failures, poll, maximum=300):
+    """Exponential backoff for consecutive polling transport failures."""
+    return min(maximum, poll * (2 ** max(0, failures - 1)))
+
+
 def main():
     load_env()
     token = os.environ.get("BOT_TOKEN", "")
     db_path = os.environ.get("DB_PATH", str(DEFAULT_DB))
     poll = float(os.environ.get("POLL_SEC", "3"))
     lp_timeout = int(os.environ.get("LONGPOLL_SEC", "25"))
+    backoff_max = int(os.environ.get("POLL_BACKOFF_MAX_SEC", "300"))
 
     if not token:
         sys.exit("BOT_TOKEN missing. Fill in .env or export BOT_TOKEN=...")
@@ -739,6 +746,7 @@ def main():
     _configure_menu(token)
 
     offset = 0            # next getUpdates offset; updates below it are confirmed
+    failures = 0
     print("polling...")
     while True:
         try:
@@ -751,18 +759,25 @@ def main():
             print("bye")
             return
         except TgError as e:
-            # honor retry_after, but never spin faster than POLL_SEC
-            wait = max(e.retry_after, poll) if e.retry_after is not None else poll
             if e.error_code == 401:
                 sys.exit(f"unauthorized: {e.description}")
+            if e.error_code:
+                failures = 0
+                wait = max(e.retry_after, poll) if e.retry_after is not None else poll
+            else:
+                failures += 1
+                wait = poll_retry_delay(failures, poll, backoff_max)
             print(f"poll error: {e} — retry in {wait:.0f}s", flush=True)
             time.sleep(wait)
             continue
         except Exception as e:
-            print(f"poll error: {e} — retry in {poll}s", flush=True)
-            time.sleep(poll)
+            failures += 1
+            wait = poll_retry_delay(failures, poll, backoff_max)
+            print(f"poll error: {e} — retry in {wait:.0f}s", flush=True)
+            time.sleep(wait)
             continue
 
+        failures = 0
         for up in updates:
             # confirm the update BEFORE handling: a crash mid-handle must not
             # replay it forever
