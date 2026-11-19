@@ -7,14 +7,29 @@ API = "https://api.telegram.org/bot{token}/{method}"
 NO_PREVIEW = {"link_preview_options": {"is_disabled": True}}
 
 def chunk_text(lines, limit=3800):
-    """Pack lines into messages under `limit` chars (Telegram caps at 4096)."""
-    out, buf = [], ""
-    for l in lines:
-        if len(buf) + len(l) + 1 > limit:
+    """Pack lines within `limit` UTF-16 units, splitting oversized lines."""
+    if limit < 1:
+        raise ValueError("limit must be positive")
+    out, buf, size = [], "", 0
+    for line in lines:
+        line_size = sum(2 if ord(char) > 0xFFFF else 1 for char in line)
+        if buf and size + 1 + line_size > limit:
             out.append(buf)
-            buf = l
-        else:
-            buf = (buf + "\n" + l) if buf else l
+            buf, size = "", 0
+        if line_size <= limit:
+            size += line_size + bool(buf)
+            buf = (buf + "\n" + line) if buf else line
+            continue
+        start = 0
+        for index, char in enumerate(line):
+            width = 2 if ord(char) > 0xFFFF else 1
+            if width > limit:
+                raise ValueError("limit cannot fit a single character")
+            if size + width > limit:
+                out.append(line[start:index])
+                start, size = index, 0
+            size += width
+        buf = line[start:]
     if buf:
         out.append(buf)
     return out

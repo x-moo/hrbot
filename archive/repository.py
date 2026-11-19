@@ -12,14 +12,29 @@ class Archive:
     def __init__(self, path):
         self.db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
         self.db.row_factory = sqlite3.Row
+        self._stats_cache = None
 
     def stats(self):
-        totals = self.db.execute(
-            "SELECT COUNT(*), COUNT(DISTINCT url), MIN(year), MAX(year) FROM media"
-        ).fetchone()
-        by_kind = self.db.execute(
-            "SELECT kind, COUNT(DISTINCT url) FROM media GROUP BY kind"
-        ).fetchall()
+        version = self.db.execute("PRAGMA data_version").fetchone()[0]
+        cached = self._stats_cache
+        if cached is not None and cached[0] == version:
+            totals, by_kind = cached[1]
+            return totals, dict(by_kind)
+
+        self.db.execute("BEGIN")
+        try:
+            totals = self.db.execute(
+                "SELECT COUNT(*), COUNT(DISTINCT url), MIN(year), MAX(year) FROM media"
+            ).fetchone()
+            by_kind = dict(self.db.execute(
+                "SELECT kind, COUNT(DISTINCT url) FROM media GROUP BY kind"
+            ).fetchall())
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
+        self._stats_cache = (version, (totals, by_kind))
         return totals, dict(by_kind)
 
     def latest(self, n=5):

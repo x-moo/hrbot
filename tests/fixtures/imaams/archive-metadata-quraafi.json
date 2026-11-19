@@ -1,0 +1,509 @@
+{
+  "metadata": {
+    "identifier": "HaramainQuraafi",
+    "mediatype": "audio",
+    "creator": "Haramain Recordings",
+    "description": "Sheikh Abdullah Quraafi",
+    "title": "Sheikh Abdullah Quraafi",
+    "publicdate": "2024-04-21 16:59:56",
+    "addeddate": "2024-04-21 16:59:56"
+  },
+  "files": [
+    {
+      "name": "001.mp3",
+      "source": "original",
+      "title": "Surat Al-Fatiha",
+      "length": "67.76",
+      "size": "482370",
+      "track": "1/114"
+    },
+    {
+      "name": "002.mp3",
+      "source": "original",
+      "title": "Surat Al-Baqara",
+      "length": "8920.79",
+      "size": "53600541",
+      "track": "2/114"
+    },
+    {
+      "name": "003.mp3",
+      "source": "original",
+      "title": "Surat Aal-E-Imran",
+      "length": "6173.41",
+      "size": "37116287",
+      "track": "3/114"
+    },
+    {
+      "name": "007.mp3",
+      "source": "original",
+      "title": "Surat Al-Araf",
+      "length": "3618.47",
+      "size": "39439696",
+      "track": "7/114"
+    },
+    {
+      "name": "009.mp3",
+      "source": "original",
+      "title": "Surat At-Tawba",
+      "length": "2802.37",
+      "size": "31062680",
+      "track": "9/114"
+    },
+    {
+      "name": "012.mp3",
+      "source": "original",
+      "title": "Surat Yusuf",
+      "length": "1976.86",
+      "size": "21643706",
+      "track": "12/114"
+    },
+    {
+      "name": "016.mp3",
+      "source": "original",
+      "title": "Surat An-Nahl",
+      "length": "2001.28",
+      "size": "21836859",
+      "track": "16/114"
+    },
+    {
+      "name": "018.mp3",
+      "source": "original",
+      "title": "Surat Al-Kahf",
+      "length": "1975.7",
+      "size": "21449875",
+      "track": "18/114"
+    },
+    {
+      "name": "019.mp3",
+      "source": "original",
+      "title": "Surat Maryam",
+      "length": "1221",
+      "size": "13360359",
+      "track": "19/114"
+    },
+    {
+      "name": "020.mp3",
+      "source": "original",
+      "title": "Surat Ta-Ha",
+      "length": "1337.6",
+      "size": "14600884",
+      "track": "20/114"
+    },
+    {
+      "name": "021.mp3",
+      "source": "original",
+      "title": "Surat Al-Anbiya",
+      "length": "1305.37",
+      "size": "14241951",
+      "track": "21/114"
+    },
+    {
+      "name": "022.mp3",
+      "source": "original",
+      "title": "Surat Al-Hajj",
+      "length": "1605.88",
+      "size": "17522293",
+      "track": "22/114"
+    },
+    {
+      "name": "026.mp3",
+      "source": "original",
+      "title": "Surat Ash-Shu'ara",
+      "length": "1580.49",
+      "size": "17232026",
+      "track": "26/114"
+    },
+    {
+      "name": "030.mp3",
+      "source": "original",
+      "title": "Surat Ar-Room",
+      "length": "915.28",
+      "size": "10013880",
+      "track": "30/114"
+    },
+    {
+      "name": "036.mp3",
+      "source": "original",
+      "title": "Surat Ya-Seen",
+      "length": "819.89",
+      "size": "9000982",
+      "track": "36/114"
+    },
+    {
+      "name": "038.mp3",
+      "source": "original",
+      "title": "Surat Sad",
+      "length": "900.71",
+      "size": "9802289",
+      "track": "38/114"
+    },
+    {
+      "name": "039.mp3",
+      "source": "original",
+      "title": "Surat Az-Zumar",
+      "length": "1324.29",
+      "size": "14473539",
+      "track": "39/114"
+    },
+    {
+      "name": "044.mp3",
+      "source": "original",
+      "title": "Surat Ad-Dukhan",
+      "length": "631.02",
+      "size": "6908067",
+      "track": "44/114"
+    },
+    {
+      "name": "046.mp3",
+      "source": "original",
+      "title": "Surat Al-Ahqaf",
+      "length": "766.86",
+      "size": "8357423",
+      "track": "46/114"
+    },
+    {
+      "name": "049.mp3",
+      "source": "original",
+      "title": "Surat Al-Hujraat",
+      "length": "462.76",
+      "size": "5109220",
+      "track": "49/114"
+    },
+    {
+      "name": "050.mp3",
+      "source": "original",
+      "title": "Surat Qaf",
+      "length": "474.7",
+      "size": "15266828",
+      "track": "50/114"
+    },
+    {
+      "name": "051.mp3",
+      "source": "original",
+      "title": "Surat Adh-Dhariyat",
+      "length": "446.38",
+      "size": "4884671",
+      "track": "51/114"
+    },
+    {
+      "name": "052.mp3",
+      "source": "original",
+      "title": "Surat At-Tur",
+      "length": "403.15",
+      "size": "4428674",
+      "track": "52/114"
+    },
+    {
+      "name": "053.mp3",
+      "source": "original",
+      "title": "Surat An-Najm",
+      "length": "446.05",
+      "size": "5377072",
+      "track": "53/114"
+    },
+    {
+      "name": "054.mp3",
+      "source": "original",
+      "title": "Surat Al-Qamar",
+      "length": "439.28",
+      "size": "5363672",
+      "track": "54/114"
+    },
+    {
+      "name": "055.mp3",
+      "source": "original",
+      "title": "Surat Ar-Rahman",
+      "length": "504.48",
+      "size": "5525741",
+      "track": "55/114"
+    },
+    {
+      "name": "056.mp3",
+      "source": "original",
+      "title": "Surat Al-Waqia",
+      "length": "628.85",
+      "size": "6893612",
+      "track": "56/114"
+    },
+    {
+      "name": "057.mp3",
+      "source": "original",
+      "title": "Surat Al-Hadid",
+      "length": "921.5",
+      "size": "10089445",
+      "track": "57/114"
+    },
+    {
+      "name": "064.mp3",
+      "source": "original",
+      "title": "Surat At-Taghabun",
+      "length": "285.08",
+      "size": "3145454",
+      "track": "64/114"
+    },
+    {
+      "name": "066.mp3",
+      "source": "original",
+      "title": "Surat At-Tahrim",
+      "length": "296.78",
+      "size": "9573656",
+      "track": "66/114"
+    },
+    {
+      "name": "067.mp3",
+      "source": "original",
+      "title": "Surat Al-Mulk",
+      "length": "356.69",
+      "size": "11490580",
+      "track": "67/114"
+    },
+    {
+      "name": "070.mp3",
+      "source": "original",
+      "title": "Surat Al-Maarij",
+      "length": "247.93",
+      "size": "2752966",
+      "track": "70/114"
+    },
+    {
+      "name": "085.mp3",
+      "source": "original",
+      "title": "Surat Al-Burooj",
+      "length": "164.48",
+      "size": "573838",
+      "track": "85/114"
+    },
+    {
+      "name": "086.mp3",
+      "source": "original",
+      "title": "Surat At-Tariq",
+      "length": "95.13",
+      "size": "365810",
+      "track": "86/114"
+    },
+    {
+      "name": "087.mp3",
+      "source": "original",
+      "title": "Surat Al-Ala",
+      "length": "85.05",
+      "size": "335658",
+      "track": "87/114"
+    },
+    {
+      "name": "088.mp3",
+      "source": "original",
+      "title": "Surat Al-Ghashiya",
+      "length": "114.43",
+      "size": "423802",
+      "track": "88/114"
+    },
+    {
+      "name": "089.mp3",
+      "source": "original",
+      "title": "Surat Al-Fajr",
+      "length": "165.05",
+      "size": "575550",
+      "track": "89/114"
+    },
+    {
+      "name": "090.mp3",
+      "source": "original",
+      "title": "Surat Al-Balad",
+      "length": "92.25",
+      "size": "357268",
+      "track": "90/114"
+    },
+    {
+      "name": "091.mp3",
+      "source": "original",
+      "title": "Surat Ash-Shams",
+      "length": "76.99",
+      "size": "311478",
+      "track": "91/114"
+    },
+    {
+      "name": "092.mp3",
+      "source": "original",
+      "title": "Surat Al-Lail",
+      "length": "97.32",
+      "size": "372360",
+      "track": "92/114"
+    },
+    {
+      "name": "093.mp3",
+      "source": "original",
+      "title": "Surat Ad-Dhuha",
+      "length": "55.82",
+      "size": "247874",
+      "track": "93/114"
+    },
+    {
+      "name": "094.mp3",
+      "source": "original",
+      "title": "Surat Al-Inshirah",
+      "length": "32.59",
+      "size": "178303",
+      "track": "94/114"
+    },
+    {
+      "name": "095.mp3",
+      "source": "original",
+      "title": "Surat At-Tin",
+      "length": "43.06",
+      "size": "209571",
+      "track": "95/114"
+    },
+    {
+      "name": "096.mp3",
+      "source": "original",
+      "title": "Surat Al-Alaq",
+      "length": "83.15",
+      "size": "329850",
+      "track": "96/114"
+    },
+    {
+      "name": "097.mp3",
+      "source": "original",
+      "title": "Surat Al-Qadr",
+      "length": "36.43",
+      "size": "189683",
+      "track": "97/114"
+    },
+    {
+      "name": "098.mp3",
+      "source": "original",
+      "title": "Surat Al-Bayyina",
+      "length": "107.51",
+      "size": "402942",
+      "track": "98/114"
+    },
+    {
+      "name": "099.mp3",
+      "source": "original",
+      "title": "Surat Az-Zalzala",
+      "length": "47.92",
+      "size": "224166",
+      "track": "99/114"
+    },
+    {
+      "name": "100.mp3",
+      "source": "original",
+      "title": "Surat Al-Adiyat",
+      "length": "50.23",
+      "size": "231106",
+      "track": "100/114"
+    },
+    {
+      "name": "101.mp3",
+      "source": "original",
+      "title": "Surat Al-Qaria",
+      "length": "46.25",
+      "size": "219170",
+      "track": "101/114"
+    },
+    {
+      "name": "102.mp3",
+      "source": "original",
+      "title": "Surat At-Takathur",
+      "length": "43.03",
+      "size": "209617",
+      "track": "102/114"
+    },
+    {
+      "name": "103.mp3",
+      "source": "original",
+      "title": "Surat Al-Asr",
+      "length": "21.04",
+      "size": "143770",
+      "track": "103/114"
+    },
+    {
+      "name": "104.mp3",
+      "source": "original",
+      "title": "Surat Al-Humaza",
+      "length": "45.29",
+      "size": "216286",
+      "track": "104/114"
+    },
+    {
+      "name": "105.mp3",
+      "source": "original",
+      "title": "Surat Al-Fil",
+      "length": "30.12",
+      "size": "170883",
+      "track": "105/114"
+    },
+    {
+      "name": "106.mp3",
+      "source": "original",
+      "title": "Surat Quraish",
+      "length": "25.31",
+      "size": "156455",
+      "track": "106/114"
+    },
+    {
+      "name": "107.mp3",
+      "source": "original",
+      "title": "Surat Al-Maun",
+      "length": "37.1",
+      "size": "191711",
+      "track": "107/114"
+    },
+    {
+      "name": "108.mp3",
+      "source": "original",
+      "title": "Surat Al-Kauther",
+      "length": "16.39",
+      "size": "129821",
+      "track": "108/114"
+    },
+    {
+      "name": "109.mp3",
+      "source": "original",
+      "title": "Surat Al-Kafiroon",
+      "length": "27.93",
+      "size": "164450",
+      "track": "109/114"
+    },
+    {
+      "name": "110.mp3",
+      "source": "original",
+      "title": "Surat An-Nasr",
+      "length": "30.12",
+      "size": "170885",
+      "track": "110/114"
+    },
+    {
+      "name": "111.mp3",
+      "source": "original",
+      "title": "Surat Al-Masadd",
+      "length": "29.1",
+      "size": "167847",
+      "track": "111/114"
+    },
+    {
+      "name": "112.mp3",
+      "source": "original",
+      "title": "Surat Al-Ikhlas",
+      "length": "18.13",
+      "size": "135155",
+      "track": "112/114"
+    },
+    {
+      "name": "113.mp3",
+      "source": "original",
+      "title": "Surat Al-Falaq",
+      "length": "27.99",
+      "size": "164601",
+      "track": "113/114"
+    },
+    {
+      "name": "114.mp3",
+      "source": "original",
+      "title": "Surat An-Nas",
+      "length": "33.57",
+      "size": "181101",
+      "track": "114/114"
+    }
+  ]
+}
