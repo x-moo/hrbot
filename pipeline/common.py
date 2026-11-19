@@ -5,6 +5,7 @@ The media regexes, host exclusions and URL-hygiene rules live here so every
 stage uses one definition.
 """
 import re
+from urllib.parse import urlsplit
 
 AUDIO_EXTS = {"mp3", "wma", "m4a", "ogg", "oga", "aac", "flac", "wav", "ra", "ram"}
 VIDEO_EXTS = {"wmv", "asf", "rm", "mp4", "3gp", "mkv", "avi", "swf"}
@@ -14,15 +15,14 @@ MEDIA_EXTS = AUDIO_EXTS | VIDEO_EXTS
 DISALLOWED = "\"'<>\\s"
 
 MEDIA_RE = re.compile(
-    r"https?://[^" + DISALLOWED + r"]+?\."
-    r"(?:mp3|wma|m4a|ogg|oga|aac|flac|wav|ra|ram"      # audio
-    r"|wmv|asf|rm|mp4|3gp|mkv|avi|swf)"                 # video
-    r"(?:\?[^" + DISALLOWED + r"]*)?",
+    r"https?://[^\"'<>\s]+?\."
+    r"(?:mp3|wma|m4a|ogg|oga|aac|flac|wav|ram|ra"
+    r"|wmv|asf|rm|mp4|3gp|mkv|avi|swf)"
+    r"(?=$|[?#\s\"'<>])"
+    r"(?:\?[^\"'<>\s]*)?",
     re.I,
 )
 
-# Excluded hosts (requirement: no YouTube/Google).
-BAD_HOST = re.compile(r"youtube|youtu\.be|google|gstatic|ytimg", re.I)
 YMD_RE = re.compile(r"(\d{4})/(\d{2})/")
 DEFAULT_SITE = "http://www.haramain.info"
 
@@ -31,6 +31,17 @@ def year_of(url):
     """Year of a /YYYY/MM/... post URL, or None."""
     m = YMD_RE.search(url)
     return int(m.group(1)) if m else None
+
+
+def is_bad_host(url):
+    """True when URL hostname is an excluded Google/YouTube domain."""
+    try:
+        hostname = (urlsplit(url).hostname or "").lower().rstrip(".")
+    except ValueError:
+        return False
+    return any(hostname == domain or hostname.endswith("." + domain)
+               for domain in ("youtube.com", "youtube-nocookie.com", "youtu.be",
+                              "google.com", "gstatic.com", "ytimg.com"))
 
 
 def host_of(url):
@@ -81,7 +92,7 @@ def classify(url, audio, video, seen_audio, seen_video):
     from broken src= attrs, and nested player payloads (`?theFile=<url>`).
     """
     url = unglue(url.strip())
-    if not url or BAD_HOST.search(url):
+    if not url or is_bad_host(url):
         return
 
     # nested payload: a player wrapper like divshare.com/flash/x.swf?theFile=<url>
@@ -91,7 +102,7 @@ def classify(url, audio, video, seen_audio, seen_video):
         if m:
             inner = m.group(0).rstrip('.,;"')
             ext = ext_of(inner)
-            if not BAD_HOST.search(inner) and ext in MEDIA_EXTS:
+            if not is_bad_host(inner) and ext in MEDIA_EXTS:
                 bucket, seen = ((audio, seen_audio) if ext in AUDIO_EXTS
                                 else (video, seen_video))
                 add_unique(inner, bucket, seen)
@@ -119,7 +130,7 @@ def extract_media(body_html):
 def read_lines(path):
     """Non-empty stripped lines of a text file ([] if missing)."""
     try:
-        with open(path) as f:
-            return [l.strip() for l in f if l.strip()]
+        with open(path, encoding="utf-8") as f:
+            return [line.strip() for line in f if line.strip()]
     except FileNotFoundError:
         return []
