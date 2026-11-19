@@ -41,6 +41,45 @@ class DownloadSafetyTests(unittest.TestCase):
         redirected = d.SafeRedirect().redirect_request(request, None, 302, '', {}, 'http://two.example/a')
         self.assertFalse(any(key.lower() in ('authorization', 'cookie', 'proxy-authorization') for key in redirected.headers))
 
+    def test_cross_origin_redirect_forwards_only_safe_headers(self):
+        headers = {'X-API-Key': 'secret', 'X-Auth-Token': 'secret',
+                   'Private-Header': 'secret', 'Referer': 'https://one.example/?token=secret',
+                   'Host': 'one.example', 'User-Agent': 'test-agent',
+                   'Accept': 'audio/*', 'Range': 'bytes=0-100'}
+        request = urllib.request.Request('https://one.example/a', headers=headers)
+        for destination in ('https://two.example/a', 'http://one.example/a',
+                            'https://one.example:444/a'):
+            with self.subTest(destination=destination):
+                redirected = d.SafeRedirect().redirect_request(
+                    request, None, 302, '', {}, destination)
+                self.assertEqual({key.lower(): value for key, value in redirected.header_items()},
+                                 {'user-agent': 'test-agent', 'accept': 'audio/*',
+                                  'range': 'bytes=0-100'})
+
+    def test_same_origin_redirect_preserves_custom_headers(self):
+        request = urllib.request.Request('https://one.example/a', headers={
+            'X-API-Key': 'secret', 'Authorization': 'secret', 'Cookie': 'secret'})
+        redirected = d.SafeRedirect().redirect_request(
+            request, None, 302, '', {}, 'https://ONE.example:443/b')
+        self.assertEqual(redirected.headers, request.headers)
+
+    def test_same_origin_preserves_unredirected_headers(self):
+        request = urllib.request.Request('https://one.example/a')
+        request.add_unredirected_header('X-API-Key', 'secret')
+        redirected = d.SafeRedirect().redirect_request(
+            request, None, 302, '', {}, 'https://one.example/b')
+        self.assertEqual(redirected.get_header('X-api-key'), 'secret')
+
+    def test_redirect_closes_response_without_unbounded_body_drain(self):
+        request = urllib.request.Request('https://one.example/a')
+        request.timeout = 1
+        handler = d.SafeRedirect()
+        handler.parent = Mock()
+        response = Mock()
+        handler.http_error_302(request, response, 302, '', {'location': '/b'})
+        response.read.assert_not_called()
+        response.close.assert_called()
+
     def test_default_backend_is_bounded(self):
         with patch.object(d, 'download_python', return_value=[]) as backend, patch.object(d, 'aria2c_path', return_value='/bin/aria2c'):
             d.download('http://example/file', self.directory, 'file', [], 2)
