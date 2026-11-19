@@ -95,10 +95,10 @@ def month_range(ym):
 def cmd_fill(args):
     posts = [line.strip() for line in Path(args.posts).read_text(encoding="utf-8").splitlines() if line.strip()]
     have = set()
-    for fn in os.listdir(args.dir):
-        if fn.endswith(".xml"):
-            t = (Path(args.dir) / fn).read_text(encoding="utf-8", errors="ignore")
-            have.update(m.group(1).strip() for m in LINK_RE.finditer(t))
+    # Monthly pages are from earlier fills, not evidence of fresh coverage.
+    for path in Path(args.dir).glob("f_[0-9]*.xml"):
+        t = path.read_text(encoding="utf-8", errors="ignore")
+        have.update(m.group(1).strip() for m in LINK_RE.finditer(t))
     missing = [p for p in posts if p not in have]
     months = sorted({f"{m.group(1)}-{m.group(2)}" for p in missing
                      if (m := MONTH_RE.search(p))})

@@ -36,6 +36,7 @@ ITEM_RE = re.compile(r"<item>(.*?)</item>", re.S)
 LINK_RE = re.compile(r"<link>(.*?)</link>", re.S)
 TITLE_RE = re.compile(r"<title>(.*?)</title>", re.S)
 PUB_RE = re.compile(r"<pubDate>(.*?)</pubDate>", re.S)
+MONTH_PAGE_RE = re.compile(r"[0-9]{6}_p[0-9]+\.xml")
 
 
 def parse_feed_files(dirs):
@@ -46,7 +47,11 @@ def parse_feed_files(dirs):
     files = []
     for d in dirs:
         files.extend(sorted(glob.glob(os.path.join(d, "*.xml"))))
-    for f in files:
+    # Global pages are refreshed first; month windows only fill their gaps.
+    global_posts = set()
+    for f in sorted(files, key=lambda path: not Path(path).match("f_[0-9]*.xml")):
+        is_global = Path(f).match("f_[0-9]*.xml")
+        is_month = MONTH_PAGE_RE.fullmatch(Path(f).name)
         t = Path(f).read_text(encoding="utf-8", errors="ignore")
         for it in ITEM_RE.findall(t):
             items += 1
@@ -56,6 +61,10 @@ def parse_feed_files(dirs):
             url = html.unescape(L.group(1)).strip()
             if not url.endswith(".html"):
                 continue
+            if is_month and url in global_posts:
+                continue
+            if is_global:
+                global_posts.add(url)
             if url not in posts_seen:
                 T, P = TITLE_RE.search(it), PUB_RE.search(it)
                 posts_seen[url] = (html.unescape(T.group(1)).strip() if T else "",
