@@ -60,8 +60,9 @@ To enable a daily refresh, set `DB_UPDATE_TIME=03:00` in `.env` (UTC). It runs w
 ## Quran reciters
 
 Use `/imaams` to browse the dedicated Quran recitation catalog: imam → paged
-original audio links on Archive.org. It is registered in Telegram's command
-menu, not added to the `/start` screen. Metadata is cached separately in
+audio tracks. Open the original on Archive.org or tap **Download** to receive
+the selected track in the same Telegram chat. `/imaams` is in Telegram's
+command menu, not the `/start` screen. Metadata is cached separately in
 `imaams-cache.db`; no Archive.org API key or new environment variable is needed.
 See [the bot guide](docs/BOT.md#quran-recitations-imaams) for cache and navigation details.
 

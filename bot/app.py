@@ -49,22 +49,30 @@ _DOWNLOADS = {}
 _DOWNLOAD_LOCK = threading.Lock()
 
 
-def _download_rows(rows, chat):
-    """Opaque, expiring archive URL snapshots; never accept a callback URL."""
-    buttons = []
+def _remember_downloads(rows, chat):
+    """Store opaque, expiring URL snapshots and return their keys in order."""
+    keys = []
     with _DOWNLOAD_LOCK:
         now = time.time()
         for key in [k for k, value in _DOWNLOADS.items() if value['expires'] < now]:
             del _DOWNLOADS[key]
         for row in rows:
             if not row['url'].lower().startswith(('http://', 'https://')):
+                keys.append(None)
                 continue
             key = secrets.token_urlsafe(12)
             _DOWNLOADS[key] = {'chat': chat, 'url': row['url'], 'row': dict(row),
                                'expires': now + VIEW_TTL}
-            buttons.append([{'text': '🎧 ' + (row['fname'] or 'file')[:60],
-                             'callback_data': 'item:' + key}])
-    return buttons
+            keys.append(key)
+    return keys
+
+
+def _download_rows(rows, chat):
+    rows = list(rows)
+    return [[{'text': '🎧 ' + (row['fname'] or 'file')[:60], 'callback_data': 'item:' + key}]
+            for row, key in zip(rows, _remember_downloads(rows, chat)) if key]
+
+
 _MENU_CACHE = {}
 
 
@@ -122,7 +130,8 @@ def _send_imaams(token, chat, data, edit_of=None, generation=None):
     try:
         if data.startswith('im:r:') and imaams_catalog is None:
             imaams_catalog = ImaamsCatalog(HERE / 'imaams-cache.db')
-        rendered = imaams_ui.render(data, imaams_catalog)
+        rendered = imaams_ui.render(data, imaams_catalog,
+                                    lambda rows: _remember_downloads(rows, chat))
     except Exception as exc:
         print(f'imaams catalog error: {type(exc).__name__}', flush=True)
         rendered = imaams_ui.unavailable()

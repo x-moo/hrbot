@@ -1,4 +1,4 @@
-"""Stateless IMAAMS screens, separate from the harvested blog archive UI."""
+"""IMAAMS screens, separate from the harvested blog archive UI."""
 from bot.i18n import translate
 from bot.imaams import RECITERS
 
@@ -30,21 +30,26 @@ def reciter_page(page):
             {'inline_keyboard': rows})
 
 
-def files_page(index, page, catalog):
+def files_page(index, page, catalog, remember_downloads):
     if not 0 <= index < len(RECITERS):
         raise ValueError('unknown reciter')
     reciter = RECITERS[index]
     files = catalog.files(reciter['identifier'])
     page, pages, start = _page(len(files), page)
     rows, lines = [], []
-    for file in files[start:start+PAGE_SIZE]:
+    visible = files[start:start+PAGE_SIZE]
+    keys = remember_downloads([{'url': file['url']} for file in visible])
+    for file, key in zip(visible, keys):
         label = str(file.get('title') or file['name']).replace('\n', ' ')[:180]
         try:
             size = max(0, int(file.get('size') or 0))
         except (ValueError, TypeError, OverflowError):
             size = 0
         size_text = f' · {size / 1024 / 1024:.1f} MB' if size else ''
-        rows.append([{'text': (label + size_text)[:64], 'url': file['url']}])
+        buttons = [{'text': (label + size_text)[:64], 'url': file['url']}]
+        if key:
+            buttons.append({'text': '⬇️ Download', 'callback_data': 'get:' + key})
+        rows.append(buttons)
         lines.append('• ' + label)
     if not files:
         lines.append(translate('No audio is available for this reciter yet.'))
@@ -54,14 +59,14 @@ def files_page(index, page, catalog):
             f"{translate('page ')}{page}/{pages}\n" + '\n'.join(lines), {'inline_keyboard': rows})
 
 
-def render(data, catalog):
+def render(data, catalog, remember_downloads):
     if data == 'imaams':
         return reciter_page(1)
     parts = data.split(':')
     if len(parts) == 3 and parts[:2] in (['im', 'list'], ['im', 'rlist']):
         return reciter_page(int(parts[2]))
     if len(parts) == 4 and parts[:2] == ['im', 'r']:
-        return files_page(int(parts[2]), int(parts[3]), catalog)
+        return files_page(int(parts[2]), int(parts[3]), catalog, remember_downloads)
     return None
 
 

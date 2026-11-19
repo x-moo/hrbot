@@ -100,18 +100,23 @@ bertahan setelah restart dan impor ulang. Direktori repository harus writable.
 `/imaams` membuka katalog **IMAAMS QU'RAN RECITATIONS** dari homepage
 [Haramain](https://www.haramain.info/). Perintah ini tersedia di daftar
 perintah bawaan Telegram, **bukan tombol tambahan di layar `/start`**.
-Pilih imam → daftar audio, lima entri per halaman. Tombol audio membuka
-URL file asli di Archive.org; fitur ini tidak mengunggah audio ke Telegram
-atau mengunduh seluruh koleksi ke server. Tombol Kembali memulihkan halaman
-daftar imam sebelumnya.
+Pilih imam → daftar audio, lima entri per halaman. Tombol judul membuka
+file asli di Archive.org. Tombol **⬇️ Unduh** di sampingnya mengunduh satu
+rekaman dan mengunggahnya ke chat Telegram yang sama. Tombol Kembali
+memulihkan halaman daftar imam sebelumnya.
+
+Tombol unduh terikat ke chat asal dan berlaku 15 menit. Unduhan memakai
+antrean, batas, dan konfigurasi MTProto yang sama dengan unduhan dari hasil
+arsip blog (lihat bagian berikut). Membuka katalog atau tautan asli tidak
+memerlukan konfigurasi MTProto.
 
 Katalog ini terpisah dari posting blog dan `archive.db`: daftar imam
 tersimpan di `bot/imaams.py`, layar di `bot/imaams_ui.py`, dan metadata
 file di `imaams-cache.db` pada root repository. Tidak perlu API key.
 Metadata diperbarui sesuai kebutuhan melalui public Metadata API Archive.org;
 cache segar berlaku enam jam. Saat jaringan bermasalah, metadata lama yang
-sudah tersimpan tetap dapat dipakai. Worker dan antrean khusus yang terbatas
-menjaga permintaan metadata tidak menahan polling atau antrean unduhan blog.
+sudah tersimpan tetap dapat dipakai. Worker metadata terpisah dari polling
+dan antrean unduhan.
 Refresh ini tidak bergantung pada `DB_UPDATE_TIME`. Direktori repository
 harus writable; tidak ada env baru atau perubahan startup yang diperlukan.
 

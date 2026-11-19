@@ -1,11 +1,16 @@
+import os
+import tempfile
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import Mock, patch
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
 
 from bot import app
 from bot.commands import command_list
 from bot.i18n import language
+from leech import cli, downloader
 
 
 class ImmediateExecutor:
@@ -57,6 +62,76 @@ class ImaamsUiTests(unittest.TestCase):
         audio = [b for row in markup['inline_keyboard'] for b in row if b.get('url')]
         self.assertEqual(len(audio), 5)
         self.assertTrue(all(b['url'].startswith('https://archive.org/download/') for b in audio))
+
+    def test_track_download_queues_the_displayed_url_to_the_same_chat(self):
+        with patch.object(app, '_DOWNLOADS', {}), \
+             patch.object(app, '_IMAAMS_EXECUTOR', ImmediateExecutor()), \
+             patch.object(app, 'tg_call'), patch.object(app, '_push') as push, \
+             patch.object(app, 'send'), \
+             patch.object(app, 'start_leech', return_value=('started', True)) as start:
+            app._handle_callback(self.callback('im:r:0:2'), Mock(), 'token')
+            rows = push.call_args.args[3]['inline_keyboard']
+            track_rows = [row for row in rows if row[0].get('url')]
+            self.assertEqual(len(track_rows), 5)
+            for row in track_rows:
+                self.assertEqual(len(row), 2)
+                self.assertTrue(row[1]['callback_data'].startswith('get:'))
+                self.assertLessEqual(len(row[1]['callback_data'].encode()), 64)
+            # A changed catalog must not change what a displayed button downloads.
+            self.catalog.files.return_value = []
+            self.catalog.files.reset_mock()
+            app._handle_callback(self.callback(track_rows[0][1]['callback_data']), Mock(), 'token')
+            self.catalog.files.assert_not_called()
+            self.assertEqual(start.call_args.args[:3],
+                             ('token', 2, 'https://archive.org/download/Test/006.mp3'))
+            self.assertFalse(start.call_args.kwargs['to_self'])
+
+    def test_track_download_rejects_other_chats_and_expired_buttons(self):
+        with patch.object(app, '_DOWNLOADS', {}), patch.object(app, '_push') as push, \
+             patch.object(app, 'tg_call') as api, patch.object(app, 'start_leech') as start:
+            app._send_imaams('token', 2, 'im:r:0:1', edit_of=4)
+            data = push.call_args.args[3]['inline_keyboard'][0][1]['callback_data']
+            other_chat = self.callback(data)
+            other_chat['message']['chat']['id'] = 3
+            app._handle_callback(other_chat, Mock(), 'token')
+            self.assertTrue(api.call_args.args[2]['show_alert'])
+            app._DOWNLOADS[data[4:]]['expires'] = 0
+            app._handle_callback(self.callback(data), Mock(), 'token')
+            self.assertTrue(api.call_args.args[2]['show_alert'])
+            start.assert_not_called()
+
+    def test_track_download_uploads_audio_through_shared_leech_worker(self):
+        url = 'https://archive.org/download/Test/001.mp3'
+        self.catalog.files.return_value = [{'name': '001.mp3', 'url': url}]
+        observed = []
+        client = Mock(start=AsyncMock(), stop=AsyncMock(),
+                      send_audio=AsyncMock(return_value=SimpleNamespace(id=42)))
+
+        def download(source, out_dir, name, *args):
+            observed.append((source, downloader._UNTRUSTED.get()))
+            path = Path(out_dir) / name
+            path.write_bytes(b'fixture audio')
+            return [str(path)]
+
+        cache = app.HERE / '.cache'
+        cache.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=cache) as temp, patch.object(app, 'HERE', Path(temp)), \
+             patch.object(app, '_DOWNLOADS', {}), patch.object(app, '_DL_POOL', {}), \
+             patch.object(app, '_LEECH_EXECUTOR', ImmediateExecutor()), \
+             patch.object(app, '_push') as push, patch.object(app, 'send'), \
+             patch.object(app, 'send_long'), patch.object(app, 'tg_call', return_value={'message_id': 5}), \
+             patch.dict(os.environ, {'TELEGRAM_API': '1', 'TELEGRAM_HASH': 'test', 'BOT_TOKEN': 'test',
+                                     'USER_SESSION_STRING': '', 'KEEP_FILES': '0', 'LEECH_SPLIT_SIZE': ''}), \
+             patch.object(cli, 'Client', return_value=client), patch.object(cli, 'download', side_effect=download):
+            app._send_imaams('token', 2, 'im:r:0:1', edit_of=4)
+            data = push.call_args.args[3]['inline_keyboard'][0][1]['callback_data']
+            app._handle_callback(self.callback(data), Mock(), 'token')
+            self.assertEqual(observed, [(url, True)])
+            client.send_audio.assert_awaited_once()
+            chat, path = client.send_audio.call_args.args
+            self.assertEqual(chat, 2)
+            self.assertFalse(Path(path).exists())
+            self.assertFalse(app._DL_POOL)
 
     def test_next_page_and_back_preserves_reciter_list_page(self):
         with patch.object(app, '_IMAAMS_EXECUTOR', ImmediateExecutor(), create=True), \
