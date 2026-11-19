@@ -537,10 +537,12 @@ def _run_leech(job, url, chat, name, split_size, thumb, as_doc, to_self):
         root = HERE / 'downloads'
         root.mkdir(exist_ok=True)
         target = tempfile.mkdtemp(prefix=f"dl{job['id']}-", dir=root)
-        files = leech.run_leech_sync(
-            url, chat=chat, name=name, split_size=split_size, thumb=thumb,
-            as_doc=as_doc, to_self=to_self, progress=note,
-            target_dir=target)
+        from leech.downloader import untrusted_downloads
+        with untrusted_downloads():
+            files = leech.run_leech_sync(
+                url, chat=chat, name=name, split_size=split_size, thumb=thumb,
+                as_doc=as_doc, to_self=to_self, progress=note,
+                target_dir=target)
         job["files"] = [str(f) for f in files]
     except Exception as e:                                  # noqa: BLE001
         job["error"] = str(e)
@@ -730,7 +732,7 @@ def poll_retry_delay(failures, poll, maximum=300):
 def main():
     load_env()
     token = os.environ.get("BOT_TOKEN", "")
-    db_path = os.environ.get("DB_PATH", str(DEFAULT_DB))
+    db_path = os.path.abspath(os.environ.get("DB_PATH") or os.environ.get("DB") or DEFAULT_DB)
     poll = float(os.environ.get("POLL_SEC", "3"))
     lp_timeout = int(os.environ.get("LONGPOLL_SEC", "25"))
     backoff_max = int(os.environ.get("POLL_BACKOFF_MAX_SEC", "300"))
@@ -741,6 +743,8 @@ def main():
         sys.exit(f"DB not found: {db_path}\n"
                  "Run first: python3 import_dump.py --dump ../haramain")
 
+    # Keep scheduled imports pointed at the same database as this bot.
+    os.environ["DB_PATH"] = db_path
     db = Archive(db_path)
     update_time = os.environ.get("DB_UPDATE_TIME", "").strip()
     if update_time:
