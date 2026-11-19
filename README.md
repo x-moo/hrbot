@@ -55,7 +55,7 @@ Default runtime paths remain compatible: `archive.db`, `downloads/`, `work/`, `h
 
 `WORK` and `OUT` override pipeline paths; use absolute paths for overrides. `DB_PATH`, `DOWNLOAD_DIR`, `PIDFILE`, and `LOGFILE` configure the other runtime locations. The dump builder validates inputs and stages a replacement before publishing it. `OUT` must be a dedicated dump directory, not an input directory or the checkout. Failed builds keep the previous dump.
 
-Set `DB_UPDATE_TIME=03:00` in `.env` to refresh the archive daily at 03:00 UTC while the bot process is running. It needs no crontab or extra terminal. Updates do not run when the bot is stopped; `SWEEP=1` includes the slower page scrape.
+To enable a daily refresh, set `DB_UPDATE_TIME=03:00` in `.env` (UTC). It runs while the bot process is running and needs no crontab or extra terminal. Updates do not run when the bot is stopped; `SWEEP=1` includes the slower page scrape.
 
 ## Development
 

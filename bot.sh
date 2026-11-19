@@ -10,7 +10,7 @@ while IFS= read -r -d '' key && IFS= read -r -d '' value; do
   export "$key=$value"
 done < <("$PY" -c 'import os, sys; from config import load_env; load_env(); keys=("DB_PATH","DB","DUMP","OUT","WORK","SWEEP","BOOTSTRAP","PIDFILE","LOGFILE","INSTALL_DEPS"); [sys.stdout.buffer.write((k+"\0"+os.environ[k]+"\0").encode()) for k in keys if k in os.environ]')
 export PYTHON="$PY"
-DB=${DB:-${DB_PATH:-archive.db}}
+DB=${DB_PATH:-${DB:-archive.db}}
 DUMP=${DUMP:-haramain}
 PIDFILE=${PIDFILE:-$PWD/bot.pid}
 LOGFILE=${LOGFILE:-$PWD/bot.log}

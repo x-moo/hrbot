@@ -19,20 +19,19 @@ def update_lock(path=None):
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise RuntimeError("archive update already running") from exc
-        try:
-            yield
-        finally:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        # The lock is released when the last copy of this descriptor closes.
+        # Explicitly unlocking here would also unlock any surviving child.
+        yield lock_file.fileno()
 
 
-def _perform_update():
+def _perform_update(lock_fd):
     """Run the archive pipeline and import using the current process config."""
     env = os.environ.copy()
     def absolute(value):
         path = Path(value)
         return str(path if path.is_absolute() else ROOT / path)
     env['PYTHON'] = sys.executable
-    env['DB'] = absolute(env.get('DB') or env.get('DB_PATH') or 'archive.db')
+    env['DB'] = absolute(env.get('DB_PATH') or env.get('DB') or 'archive.db')
     env['DUMP'] = absolute(env.get('DUMP') or env.get('OUT') or 'haramain')
     env['OUT'] = env['DUMP']
     env['WORK'] = absolute(env.get('WORK') or 'work')
@@ -42,18 +41,18 @@ def _perform_update():
         stages = ("sitemap", "feed", "build")
     for stage in stages:
         subprocess.run(["bash", "run.sh", stage], check=True,
-                       cwd=ROOT / "pipeline", env=env)
+                       cwd=ROOT / "pipeline", env=env, pass_fds=(lock_fd,))
     subprocess.run([sys.executable, "archive/import_dump.py", "--dump",
                     env["DUMP"], "--db", env["DB"]], check=True,
-                   cwd=ROOT, env=env)
+                   cwd=ROOT, env=env, pass_fds=(lock_fd,))
 
 
 def run_update():
     """Run the scheduled refresh with a process-wide lock."""
     from config import load_env
     load_env(ROOT)
-    with update_lock():
-        _perform_update()
+    with update_lock() as lock_fd:
+        _perform_update(lock_fd)
 
 
 def main():
