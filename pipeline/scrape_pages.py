@@ -37,13 +37,14 @@ def fetch_page(url, timeout=60, tries=3, ua=True):
     cmd = ["curl", "-s", "-L", "--compressed", "--max-time", str(timeout),
            "-w", "%{http_code}", "-o", tmp, url]
     if ua:
-        cmd[6:6] = ["-H", "User-Agent: Mozilla/5.0"]
+        cmd[1:1] = ["-H", "User-Agent: Mozilla/5.0"]
+    cmd.insert(-1, "--")
     code = "000"
     try:
         for i in range(tries):
             r = subprocess.run(cmd, capture_output=True, text=True,
                                timeout=timeout + 30)
-            code = (r.stdout.strip() or "000")[-3:]
+            code = f"ERR:curl:{r.returncode}" if r.returncode else (r.stdout.strip() or "000")[-3:]
             if code == "200":
                 break
             time.sleep(3 + i * 5)

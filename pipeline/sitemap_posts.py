@@ -8,6 +8,9 @@ Feeds cap depth and silently omit old posts, so the sitemap list is the
 denominator every later coverage claim is measured against.
 """
 import argparse
+import os
+from pathlib import Path
+import tempfile
 import re
 import sys
 import urllib.request
@@ -47,11 +50,14 @@ def main():
                     posts.append(l)
 
     posts = list(dict.fromkeys(posts))               # dedupe, keep order
-    with open(args.out, "w") as f:
-        f.write("\n".join(posts) + "\n")
-    print(f"post urls: {len(posts)} -> {args.out}")
     if not posts:
         sys.exit("no posts found -- check --site / sitemap path")
+    out = Path(args.out)
+    with tempfile.TemporaryDirectory(prefix=".sitemap-", dir=out.parent) as directory:
+        stage = Path(directory) / "posts.txt"
+        stage.write_text("\n".join(posts) + "\n", encoding="utf-8")
+        os.replace(stage, out)
+    print(f"post urls: {len(posts)} -> {out}")
 
 
 if __name__ == "__main__":
