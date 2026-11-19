@@ -29,7 +29,6 @@ import secrets
 import os
 import re
 import sqlite3
-import subprocess
 from archive.repository import Archive, PAGE_SIZE
 import sys
 import threading
@@ -39,6 +38,7 @@ from config import load_env
 
 from bot.telegram import NO_PREVIEW, TgError, tg_call, send, send_long
 from bot.i18n import Preferences, language, translate, localize_markup
+from bot.update import run_update
 
 preferences = Preferences()
 current_chat = ContextVar('current_chat', default=None)
@@ -81,6 +81,7 @@ def _configure_menu(token, **options):
         print(f'command menu setup failed: {error}', flush=True)
 
 HERE = Path(__file__).resolve().parents[1]
+ROOT = HERE
 DEFAULT_DB = HERE / "archive.db"
 DL_LINES = 10          # lines kept in a per-download status message
 DL_JOBS = 2            # concurrent downloads per chat
@@ -746,8 +747,7 @@ def main():
     if update_time:
         from bot.scheduler import start_daily_worker
         try:
-            start_daily_worker(update_time, lambda: subprocess.run(
-                ["bash", str(ROOT / "bot.sh"), "update"], check=True, cwd=ROOT),
+            start_daily_worker(update_time, run_update,
                 logger=lambda message: print(message, flush=True))
         except ValueError as exc:
             sys.exit(f"invalid DB_UPDATE_TIME (use HH:MM UTC): {exc}")

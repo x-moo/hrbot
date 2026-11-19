@@ -37,15 +37,7 @@ init_ready() {
 }
 
 cmd_update() {
-  echo "[update] refreshing archive"
-  ( cd pipeline && bash run.sh sitemap ) || exit 1
-  ( cd pipeline && bash run.sh feed ) || exit 1
-  if [ "${SWEEP:-0}" = "1" ]; then
-    echo "[update] SWEEP=1 -> page-sweep"
-    ( cd pipeline && bash run.sh sweep ) || exit 1
-  fi
-  ( cd pipeline && bash run.sh build ) || exit 1
-  "$PY" archive/import_dump.py --dump "$DUMP" --db "$DB"
+  "$PY" -m bot.update
 }
 
 cmd_run() {
