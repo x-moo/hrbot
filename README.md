@@ -57,6 +57,14 @@ Default runtime paths remain compatible: `archive.db`, `downloads/`, `work/`, `h
 
 To enable a daily refresh, set `DB_UPDATE_TIME=03:00` in `.env` (UTC). It runs while the bot process is running and needs no crontab or extra terminal. Updates do not run when the bot is stopped; `SWEEP=1` includes the slower page scrape.
 
+## Quran reciters
+
+Use `/imaams` to browse the dedicated Quran recitation catalog: imam → paged
+original audio links on Archive.org. It is registered in Telegram's command
+menu, not added to the `/start` screen. Metadata is cached separately in
+`imaams-cache.db`; no Archive.org API key or new environment variable is needed.
+See [the bot guide](docs/BOT.md#quran-recitations-imaams) for cache and navigation details.
+
 ## Development
 
 ```bash

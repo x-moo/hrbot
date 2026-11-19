@@ -38,6 +38,9 @@ from config import load_env
 
 from bot.telegram import NO_PREVIEW, TgError, tg_call, send, send_long
 from bot.i18n import Preferences, language, translate, localize_markup
+from bot.commands import configure_menu
+from bot.imaams import ImaamsCatalog
+from bot import imaams_ui
 from bot.update import run_update
 
 preferences = Preferences()
@@ -62,7 +65,6 @@ def _download_rows(rows, chat):
             buttons.append([{'text': '🎧 ' + (row['fname'] or 'file')[:60],
                              'callback_data': 'item:' + key}])
     return buttons
-from bot.commands import configure_menu
 _MENU_CACHE = {}
 
 
@@ -86,7 +88,72 @@ DL_LINES = 10          # lines kept in a per-download status message
 DL_JOBS = 2            # concurrent downloads per chat
 VIEW_TTL = 900         # seconds a result message's buttons keep working
 _LEECH_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix='leech')
+# Metadata requests use a separate bounded worker, never the polling thread.
+imaams_catalog = None
+_IMAAMS_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix='imaams')
+_IMAAMS_SLOTS = threading.BoundedSemaphore(4)
+_IMAAMS_GENERATIONS = {}
+_IMAAMS_GENERATION_LOCK = threading.Lock()
+_IMAAMS_GENERATION_IDS = itertools.count(1)
 
+
+def _imaams_generation(chat, message_id):
+    key = (chat, message_id)
+    with _IMAAMS_GENERATION_LOCK:
+        return _IMAAMS_GENERATIONS.get(key, 0)
+
+
+def _invalidate_imaams(chat, message_id):
+    key = (chat, message_id)
+    with _IMAAMS_GENERATION_LOCK:
+        generation = next(_IMAAMS_GENERATION_IDS)
+        _IMAAMS_GENERATIONS[key] = generation
+        if len(_IMAAMS_GENERATIONS) > 1000:
+            oldest = next(iter(_IMAAMS_GENERATIONS))
+            if oldest != key:
+                del _IMAAMS_GENERATIONS[oldest]
+        return generation
+
+
+def _send_imaams(token, chat, data, edit_of=None, generation=None):
+    if generation is not None and _imaams_generation(chat, edit_of) != generation:
+        return
+    global imaams_catalog
+    try:
+        if data.startswith('im:r:') and imaams_catalog is None:
+            imaams_catalog = ImaamsCatalog(HERE / 'imaams-cache.db')
+        rendered = imaams_ui.render(data, imaams_catalog)
+    except Exception as exc:
+        print(f'imaams catalog error: {type(exc).__name__}', flush=True)
+        rendered = imaams_ui.unavailable()
+    if rendered is not None:
+        if generation is not None and _imaams_generation(chat, edit_of) != generation:
+            return
+        text, markup = rendered
+        _push(token, chat, text, markup, edit_of=edit_of, plain=True)
+
+
+def _queue_imaams(token, chat, data, edit_of):
+    generation = _invalidate_imaams(chat, edit_of)
+    if not _IMAAMS_SLOTS.acquire(blocking=False):
+        text, markup = imaams_ui.unavailable()
+        _push(token, chat, text, markup, edit_of=edit_of, plain=True)
+        return
+
+    def work():
+        try:
+            _send_imaams(token, chat, data, edit_of, generation)
+        except Exception as exc:
+            print(f'imaams send error: {type(exc).__name__}', flush=True)
+        finally:
+            _IMAAMS_SLOTS.release()
+
+    try:
+        _IMAAMS_EXECUTOR.submit(copy_context().run, work)
+    except Exception:
+        _IMAAMS_SLOTS.release()
+        text, markup = imaams_ui.unavailable()
+        _push(token, chat, text, markup, edit_of=edit_of, plain=True)
 
 
 def fmt_count(n):
@@ -382,6 +449,18 @@ def _handle_callback(cb, db, token):
         answer()
         return
 
+    if data.startswith('im:'):
+        if data == 'im:x':
+            answer()
+            return
+        answer()
+        if data.startswith('im:r:'):
+            _queue_imaams(token, chat, data, edit_of=message_id)
+        else:
+            _invalidate_imaams(chat, message_id)
+            _send_imaams(token, chat, data, edit_of=message_id)
+        return
+
     if data.startswith(('item:', 'list:')):
         key = data.split(':', 1)[1]
         with _DOWNLOAD_LOCK:
@@ -646,6 +725,7 @@ def help_text():
             "• /date YYYY-MM-DD — media satu tanggal\n"
             "• /year [yyyy] — telusuri per tahun → bulan\n"
             "• /stat — statistik arsip\n"
+            "• /imaams — Quran reciters (command menu)\n"
             "Klik tombol Unduh pada hasil arsip untuk menerima berkas.\n\n"
             "Hasil panjang tampil 5 per halaman dengan tombol ⬅️ Back / Next ➡️.")
 
@@ -720,6 +800,8 @@ def _handle_update(upd, db, token):
     elif cmd == "/stat":
         out = _screen_stat(db)
         _push(token, chat, out[0], out[1])
+    elif cmd == "/imaams":
+        _send_imaams(token, chat, 'imaams')
     else:
         send(token, chat, "Unknown command. Use /help for the list.")
 

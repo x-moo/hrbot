@@ -49,7 +49,7 @@ mengetik. Setiap layar punya baris `[ ⬅️ … ] [ 🔝 Menu ]` untuk naik lag
 
 Bot juga mengaktifkan tombol **Menu** bawaan Telegram di sebelah kolom pesan
 pada chat privat. Tombol ini membuka daftar `/start`, `/latest`, `/search`,
-`/date`, `/year`, `/stat`, `/language`, dan `/help`. Perintah yang
+`/date`, `/year`, `/stat`, `/imaams`, `/language`, dan `/help`. Perintah yang
 memerlukan argumen tetap harus dilengkapi pengguna sebelum dikirim.
 Registrasi dilakukan saat startup dan `/start`; perubahan bahasa juga
 memperbarui deskripsi perintah untuk chat tersebut. Nama dan posisi tombol
@@ -94,6 +94,26 @@ bertahan setelah restart dan impor ulang. Direktori repository harus writable.
   terakhir, bukan error.
 - Polling pakai `allowed_updates: ["message", "callback_query"]`, dan tiap
   tap dibalas `answerCallbackQuery` supaya spinner klien berhenti.
+
+## Quran recitations — `/imaams`
+
+`/imaams` membuka katalog **IMAAMS QU'RAN RECITATIONS** dari homepage
+[Haramain](https://www.haramain.info/). Perintah ini tersedia di daftar
+perintah bawaan Telegram, **bukan tombol tambahan di layar `/start`**.
+Pilih imam → daftar audio, lima entri per halaman. Tombol audio membuka
+URL file asli di Archive.org; fitur ini tidak mengunggah audio ke Telegram
+atau mengunduh seluruh koleksi ke server. Tombol Kembali memulihkan halaman
+daftar imam sebelumnya.
+
+Katalog ini terpisah dari posting blog dan `archive.db`: daftar imam
+tersimpan di `bot/imaams.py`, layar di `bot/imaams_ui.py`, dan metadata
+file di `imaams-cache.db` pada root repository. Tidak perlu API key.
+Metadata diperbarui sesuai kebutuhan melalui public Metadata API Archive.org;
+cache segar berlaku enam jam. Saat jaringan bermasalah, metadata lama yang
+sudah tersimpan tetap dapat dipakai. Worker dan antrean khusus yang terbatas
+menjaga permintaan metadata tidak menahan polling atau antrean unduhan blog.
+Refresh ini tidak bergantung pada `DB_UPDATE_TIME`. Direktori repository
+harus writable; tidak ada env baru atau perubahan startup yang diperlukan.
 
 ## Download dari hasil arsip
 

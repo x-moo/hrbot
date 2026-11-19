@@ -36,6 +36,13 @@ class Preferences:
 
 # English, Indonesian. Original mixed-language screens are normalized first.
 PHRASES = [
+    ('Quran reciters (command menu)', 'daftar imam Quran (menu perintah)'),
+    ('Choose a reciter:', 'Pilih imam:'),
+    ('No audio is available for this reciter yet.', 'Belum ada audio untuk imam ini.'),
+    ('Reciter catalog is temporarily unavailable. Try again later.',
+     'Katalog imam sementara tidak tersedia. Coba lagi nanti.'),
+    ('audio tracks', 'rekaman audio'),
+    ('Reciters', 'Daftar imam'),
     ('This recording is already queued.', 'Rekaman ini sudah dalam antrean.'),
     ('Download queue is full. Try again later.', 'Antrean unduhan penuh. Coba lagi nanti.'),
     ('Download queue is unavailable.', 'Antrean unduhan tidak tersedia.'),
