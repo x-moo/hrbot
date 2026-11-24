@@ -19,3 +19,5 @@ haramain/
 .pg_*.html
 
 .update.lock
+.update-status.json
+.update-status-*

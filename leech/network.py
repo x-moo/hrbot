@@ -23,6 +23,7 @@ import time
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit, unquote
+from .control import check_cancelled
 
 
 def public_address(address):
@@ -305,6 +306,7 @@ class PublicHTTPSHandler(urllib.request.HTTPSHandler):
 
 
 def remaining(deadline):
+    check_cancelled()
     budget = deadline - time.monotonic()
     if budget <= 0:
         raise RuntimeError('download timed out')

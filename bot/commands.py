@@ -11,6 +11,8 @@ COMMANDS = (
     ('stat', 'Archive statistics', 'Statistik arsip'),
     ('imaams', 'Browse Quran reciters and audio', 'Cari imam dan rekaman Quran'),
     ('language', 'Choose English or Indonesian', 'Pilih bahasa Inggris atau Indonesia'),
+    ('status', 'Show queued and active downloads', 'Lihat antrean dan unduhan aktif'),
+    ('cancel', 'Cancel a download by job ID', 'Batalkan unduhan berdasarkan ID'),
     ('help', 'Command help', 'Bantuan perintah'),
 )
 

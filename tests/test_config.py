@@ -30,6 +30,7 @@ class ConfigTests(unittest.TestCase):
                 if line and not line.startswith("#") and "=" in line}
         self.assertEqual(keys, {
             "BOT_TOKEN", "DB_PATH", "POLL_SEC", "LONGPOLL_SEC",
-            "POLL_BACKOFF_MAX_SEC", "DB_UPDATE_TIME",
+            "POLL_BACKOFF_MAX_SEC", "DB_UPDATE_TIME", "DB_UPDATE_MAX_AGE_HOURS",
+            "DB_UPDATE_RETRY_SEC", "DB_UPDATE_TIMEOUT_SEC",
             "TELEGRAM_API", "TELEGRAM_HASH", "USER_SESSION_STRING",
         })

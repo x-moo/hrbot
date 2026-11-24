@@ -9,14 +9,17 @@ Fallback      : <dump>/years/*/*_with_source.tsv
 DB schema: one `media` table (url, post, kind, year, month, day, slug, fname)
 plus a `meta` table (row count, import time). ~100K rows -> a few MB.
 """
+
 import argparse
 import csv
 import datetime
 import glob
+import itertools
 import os
 import re
 import sqlite3
-import sys
+from contextlib import closing
+from pathlib import Path
 
 YMD_RE = re.compile(r"/(\d{4})/(\d{2})/([^/]+?)\.html?$")
 
@@ -51,7 +54,9 @@ def collect_rows(dump_dir):
                 if len(r) >= 3 and r[1] in ("audio", "video"):
                     yield r[2], (r[4] if len(r) > 4 else ""), r[1]
         return
-    for tsv in sorted(glob.glob(os.path.join(dump_dir, "years", "*", "*_with_source.tsv"))):
+    for tsv in sorted(
+        glob.glob(os.path.join(dump_dir, "years", "*", "*_with_source.tsv"))
+    ):
         kind = "audio" if "audio" in os.path.basename(tsv) else "video"
         with open(tsv, encoding="utf-8", errors="ignore") as f:
             for line in f:
@@ -60,52 +65,82 @@ def collect_rows(dump_dir):
                     yield c[0], c[1], kind
 
 
+def import_catalog(dump_dir, database):
+    """Publish rows and metadata in one transaction without replacing the DB inode.
+
+    WAL readers continue seeing the old catalog until commit; exceptions roll
+    back DELETE/INSERT/metadata together. Keeping the file (rather than rename)
+    also keeps long-lived bot connections attached to the refreshed database.
+    """
+    rows = iter(collect_rows(dump_dir))
+    first = next(rows, None)
+    if first is None:
+        raise ValueError(f"no media rows found. Check {dump_dir}/csv/catalog.csv")
+    database = Path(database)
+    database.parent.mkdir(parents=True, exist_ok=True)
+    with closing(sqlite3.connect(database, timeout=30)) as db:
+        db.execute("PRAGMA journal_mode=WAL")
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("""CREATE TABLE IF NOT EXISTS media (
+                id INTEGER PRIMARY KEY, url TEXT NOT NULL, post TEXT NOT NULL,
+                kind TEXT, year INT, month INT, day INT, slug TEXT, fname TEXT)""")
+            db.execute("DELETE FROM media")
+            count, batch = 0, []
+            for url, post, kind in itertools.chain((first,), rows):
+                if not url or not url.lower().startswith(("http://", "https://")):
+                    raise ValueError("catalog contains an invalid media URL")
+                y, month, day, slug = parse_post(post)
+                batch.append((url, post, kind, y, month, day, slug, fname_of(url)))
+                count += 1
+                if len(batch) >= 5000:
+                    db.executemany(
+                        "INSERT INTO media VALUES (NULL,?,?,?,?,?,?,?,?)", batch
+                    )
+                    batch.clear()
+            if batch:
+                db.executemany("INSERT INTO media VALUES (NULL,?,?,?,?,?,?,?,?)", batch)
+            for name, columns in (
+                ("slug", "slug"),
+                ("ymd", "year, month, day"),
+                ("kind", "kind"),
+            ):
+                db.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_media_{name} ON media({columns})"
+                )
+            db.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)")
+            built = datetime.datetime.now(datetime.timezone.utc).isoformat(
+                timespec="seconds"
+            )
+            db.executemany(
+                "INSERT OR REPLACE INTO meta VALUES (?,?)",
+                [("rows", str(count)), ("built", built)],
+            )
+            unique = db.execute("SELECT COUNT(DISTINCT url) FROM media").fetchone()[0]
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        # Do not force WAL truncation while other read transactions are active.
+        db.execute("PRAGMA wal_checkpoint(PASSIVE)")
+    return {"rows": count, "unique_urls": unique, "built": built}
+
+
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dump", required=True, help="dump dir (from build_dump.py)")
-    ap.add_argument("--db", default="archive.db", help="output sqlite path")
-    args = ap.parse_args()
-
-    rows = list(collect_rows(args.dump))
-    if not rows:
-        sys.exit(f"no media rows found. Check {args.dump}/csv/catalog.csv")
-
-    db = sqlite3.connect(args.db)
-    db.execute("PRAGMA journal_mode=WAL")
-    db.execute("""CREATE TABLE IF NOT EXISTS media (
-        id INTEGER PRIMARY KEY,
-        url TEXT NOT NULL,
-        post TEXT NOT NULL,
-        kind TEXT,
-        year INT, month INT, day INT,
-        slug TEXT, fname TEXT)""")
-    db.execute("DELETE FROM media")
-
-    now = datetime.datetime.now().isoformat(timespec="seconds")
-    n, batch = 0, []
-    for url, post, kind in rows:
-        y, mo, d, slug = parse_post(post)
-        n += 1
-        batch.append((url, post, kind, y, mo, d, slug, fname_of(url)))
-        if len(batch) >= 5000:
-            db.executemany("INSERT INTO media VALUES (NULL,?,?,?,?,?,?,?,?)", batch)
-            batch = []
-            print(f"  {n} rows...", flush=True)
-    if batch:
-        db.executemany("INSERT INTO media VALUES (NULL,?,?,?,?,?,?,?,?)", batch)
-
-    db.execute("CREATE INDEX IF NOT EXISTS idx_media_slug ON media(slug)")
-    db.execute("CREATE INDEX IF NOT EXISTS idx_media_ymd ON media(year, month, day)")
-    db.execute("CREATE INDEX IF NOT EXISTS idx_media_kind ON media(kind)")
-    db.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)")
-    db.execute("INSERT OR REPLACE INTO meta VALUES ('rows', ?)", (str(n),))
-    db.execute("INSERT OR REPLACE INTO meta VALUES ('built', ?)", (now,))
-    db.commit()
-
-    uniq = db.execute("SELECT COUNT(DISTINCT url) FROM media").fetchone()[0]
-    print(f"import done: {n} rows ({uniq} unique urls) -> {args.db}")
-    print(f"db size: {os.path.getsize(args.db) / 1024 / 1024:.1f} MB")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument("--dump", required=True, help="dump dir (from build_dump.py)")
+    parser.add_argument("--db", default="archive.db", help="output sqlite path")
+    args = parser.parse_args()
+    try:
+        result = import_catalog(args.dump, args.db)
+    except (ValueError, OSError, sqlite3.Error) as exc:
+        parser.exit(1, f"import failed: {exc}\n")
+    print(
+        f"import done: {result['rows']} rows ({result['unique_urls']} unique urls) -> {args.db}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

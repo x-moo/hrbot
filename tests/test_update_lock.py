@@ -31,6 +31,9 @@ class UpdateLockTests(unittest.TestCase):
             with subprocess.Popen([sys.executable, '-c', code, str(root)],
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True) as parent:
                 try:
+                    # Stage logs precede the child readiness line.
+                    self.assertTrue(select.select([parent.stdout], [], [], 5)[0])
+                    self.assertIn('[update] sitemap: started', parent.stdout.readline())
                     self.assertTrue(select.select([parent.stdout], [], [], 5)[0])
                     self.assertEqual(parent.stdout.readline().strip(), 'ready')
                     parent.kill()

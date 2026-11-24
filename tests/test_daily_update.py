@@ -23,31 +23,35 @@ class DailyUpdateTests(unittest.TestCase):
                 next_daily_run(datetime.now(timezone.utc), value)
 
     def test_worker_waits_runs_and_survives_callback_failure(self):
-        from unittest.mock import patch
-        calls, logs, delays = [], [], []
-        times = iter([datetime(2026, 1, 2, 1, tzinfo=timezone.utc),
-                      datetime(2026, 1, 2, 4, tzinfo=timezone.utc)])
+        from datetime import timedelta
+        from bot.scheduler import DailyWorker
+        now = [datetime(2026, 1, 2, 1, tzinfo=timezone.utc)]
+        calls, logs = [], []
         def callback():
             calls.append('ran')
             if len(calls) == 1:
                 raise RuntimeError('offline')
-        def sleeper(delay):
-            delays.append(delay)
-        class StopLoop(BaseException):
-            pass
-        def clock():
-            try:
-                return next(times)
-            except StopIteration:
-                raise StopLoop
-        with patch('bot.scheduler.threading.Thread') as thread:
-            start_daily_worker('03:00', callback, logs.append, clock, sleeper)
-        thread.return_value.start.assert_called_once()
-        with self.assertRaises(StopLoop):
-            thread.call_args.kwargs['target']()
-        self.assertEqual(delays, [7200, 82800])
+        worker = DailyWorker('03:00', callback, logger=logs.append,
+                             clock=lambda: now[0], retry_seconds=300)
+        self.assertFalse(worker.step())
+        now[0] += timedelta(hours=2)
+        self.assertTrue(worker.step())
+        self.assertEqual(worker.failures, 1)
+        self.assertEqual(worker.next_run, datetime(2026, 1, 2, 3, 5, tzinfo=timezone.utc))
+        now[0] += timedelta(minutes=5)
+        self.assertTrue(worker.step())
         self.assertEqual(calls, ['ran', 'ran'])
-        self.assertEqual(logs, ['daily update error: offline'])
+        self.assertEqual(worker.failures, 0)
+        self.assertTrue(any('retry in 300s' in line for line in logs))
+
+    def test_stopped_worker_does_not_invoke_callback(self):
+        from bot.scheduler import DailyWorker
+        from unittest.mock import Mock
+        callback = Mock()
+        worker = DailyWorker('03:00', callback, startup_callback=callback)
+        worker.stop()
+        self.assertFalse(worker.step())
+        callback.assert_not_called()
 
 
 if __name__ == "__main__":

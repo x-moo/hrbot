@@ -11,7 +11,7 @@ NoNewPrivileges=true
 UMask=0077
 # EDIT the path to match your server layout
 WorkingDirectory=/opt/haramain-bot
-ExecStart=/usr/bin/python3 /opt/haramain-bot/bot.py
+ExecStart=/usr/bin/bash /opt/haramain-bot/start.sh
 Restart=always
 RestartSec=5
 # hard memory cap for a 500 MB box

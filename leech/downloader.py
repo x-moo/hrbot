@@ -3,14 +3,15 @@ import http.client
 import os
 import re
 import shutil
-import subprocess
+import subprocess as subprocess  # Compatibility: legacy callers patch this namespace.
 import time
 import urllib.request
 from contextlib import contextmanager
 from contextvars import ContextVar
 from urllib.parse import urlsplit
 from pathlib import Path
-from .utils import emit, log_line, fmt_size
+from .utils import emit, fmt_size
+from .control import check_cancelled, report_stage
 from .network import validate_url, PublicHTTPHandler, PublicHTTPSHandler, DeadlineFTPHandler
 UPDATE_EVERY = 3.0
 _UNTRUSTED = ContextVar('untrusted_archive_download', default=False)
@@ -105,39 +106,44 @@ def download(url, out_dir, name, headers, jobs, on_line=None, *, untrusted=None)
     """Use the bounded Python backend for every download."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    target = out_dir / name
     return download_python(url, out_dir, name, headers, on_line, untrusted=untrusted)
 
 
 # --- splitting ----------------------------------------------------------------
 def split_file(path, split_size, on_line=None):
     """Split `path` into <name>.001, .002 ... (returns the file list)."""
+    check_cancelled()
     path = Path(path)
     size = path.stat().st_size
     if split_size <= 0 or size <= split_size:
         return [str(path)]
+    report_stage('splitting')
     emit(f"splitting {fmt_size(size)} into {fmt_size(split_size)} parts", on_line)
     parts = []
     try:
         with path.open('rb') as source:
             remaining = size
             while remaining:
+                check_cancelled()
                 part = Path(f'{path}.{len(parts) + 1:03d}')
                 with part.open('xb') as output:
                     parts.append(str(part))
                     budget = min(split_size, remaining)
                     while budget:
+                        check_cancelled()
                         chunk = source.read(min(1024 * 1024, budget))
+                        check_cancelled()
                         if not chunk:
                             raise OSError('source ended during split')
                         output.write(chunk)
                         remaining -= len(chunk)
                         budget -= len(chunk)
+        check_cancelled()
+        path.unlink()
     except BaseException:
         for part in parts:
             Path(part).unlink(missing_ok=True)
         raise
-    path.unlink()
     return parts
 
 
@@ -148,6 +154,9 @@ def download_python(url, out_dir, name, headers, on_line=None, *, untrusted=None
     every redirect, pin DNS answers, and ignore environment proxy settings.
     Default trusted mode retains operator CLI access to local HTTP/FTP.
     """
+    check_cancelled()
+    report_stage('downloading')
+    check_cancelled()
     untrusted = bool(untrusted or _UNTRUSTED.get())
     if not name or Path(name).name != name or name in ('.', '..'):
         raise RuntimeError('invalid download filename')
@@ -193,7 +202,12 @@ def download_python(url, out_dir, name, headers, on_line=None, *, untrusted=None
             with partial.open('xb') as output:
                 owned = True
                 emit('python: downloading', on_line)
-                while chunk := response.read(1024 * 1024):
+                while True:
+                    check_cancelled()
+                    chunk = response.read(1024 * 1024)
+                    check_cancelled()
+                    if not chunk:
+                        break
                     if time.monotonic() >= deadline:
                         raise RuntimeError('download timed out')
                     if received + len(chunk) > maximum:
@@ -211,6 +225,7 @@ def download_python(url, out_dir, name, headers, on_line=None, *, untrusted=None
                 raise RuntimeError('download timed out')
             if total is not None and received != total:
                 raise RuntimeError('incomplete download')
+        check_cancelled()
         partial.rename(target)
         owned = False
     except (OSError, ValueError, http.client.HTTPException):

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download a URL with aria2c, then upload it to Telegram over MTProto.
+"""Download a URL with bounded Python streaming, then upload over MTProto.
 
 The hosted Bot API caps uploads at 50 MB; MTProto does not, so the real
 ceiling is the per-file limit (2 GB, 4 GB with Premium) and files above
@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import html
 import os
 import re
 import sys
@@ -31,10 +32,11 @@ from types import SimpleNamespace
 from .utils import redact, log_line, emit, env_int, parse_size, media_kind, fmt_size, kind_label
 from .downloader import download, split_file
 from .session import upload_slot
+from .control import check_cancelled, report_stage, await_controlled, TransferError, TransferCancelled
 
 try:
     from pyrogram import Client, enums
-    from pyrogram.errors import FloodWait, RPCError
+    from pyrogram.errors import FloodWait, RPCError, BadRequest
     from pyrogram.types import LinkPreviewOptions
 except ImportError:                                         # noqa: BLE001
     sys.exit("pyrogram is missing. Install it: pip install kurigram tgcrypto")
@@ -52,7 +54,8 @@ async def upload_with_timeout(client, chat, path, *, timeout=None, **options):
     if timeout is None:
         timeout = max(1, env_int('LEECH_UPLOAD_TIMEOUT', 1800))
     try:
-        result = await asyncio.wait_for(upload(client, chat, path, **options), timeout)
+        check_cancelled()
+        result = await await_controlled(upload(client, chat, path, **options), timeout)
         if not getattr(result, "id", None):
             raise RuntimeError("Upload not confirmed by a message id; file retained")
         return result
@@ -63,27 +66,36 @@ async def upload_with_timeout(client, chat, path, *, timeout=None, **options):
 async def upload(client, chat, path, as_doc=False, thumb=None, caption=None):
     """Send one file with the Pyrogram method matching its kind."""
     kind = "doc" if as_doc else media_kind(path)
-    cap = caption if caption is not None else Path(path).name
-    try:
-        if kind == "video":
-            return await client.send_video(chat, path, caption=cap,
-                                           supports_streaming=True, thumb=thumb)
-        if kind == "audio":
-            return await client.send_audio(chat, path, caption=cap, thumb=thumb)
-        if kind == "photo":
-            return await client.send_photo(chat, path, caption=cap)
-        return await client.send_document(chat, path, caption=cap, thumb=thumb)
-    except FloodWait as f:
-        wait = int(getattr(f, "value", None) or f.args[0] or 0)
-        print(f"[upload] flood wait {wait}s", flush=True)
-        await asyncio.sleep(wait + 3)
-        return await upload(client, chat, path, as_doc, thumb, caption)
-    except RPCError as e:
-        # a "media invalid" style rejection still delivers as a plain document
-        if kind != "doc" and "MEDIA" in str(e).upper():
-            print(f"[upload] {e} -> retrying as document", flush=True)
+    cap = html.escape(caption if caption is not None else Path(path).name)
+    retries = 0
+    while True:
+        check_cancelled()
+        try:
+            if kind == "video":
+                return await client.send_video(chat, path, caption=cap,
+                                               supports_streaming=True, thumb=thumb)
+            if kind == "audio":
+                return await client.send_audio(chat, path, caption=cap, thumb=thumb)
+            if kind == "photo":
+                return await client.send_photo(chat, path, caption=cap)
             return await client.send_document(chat, path, caption=cap, thumb=thumb)
-        raise
+        except FloodWait as f:
+            if retries >= 3:
+                raise RuntimeError('FloodWait retry limit exceeded; file retained') from None
+            retries += 1
+            wait = int(getattr(f, "value", None) or f.args[0] or 0)
+            if wait < 0 or wait > 60:
+                raise RuntimeError('FloodWait exceeds 60s limit; file retained') from None
+            log_line(f"upload: flood wait {wait}s")
+            await await_controlled(asyncio.sleep(wait + 3), timeout=wait + 4)
+        except RPCError as e:
+            # A media rejection is explicit non-delivery, not a network retry.
+            if (kind != "doc" and isinstance(e, BadRequest)
+                    and getattr(e, "ID", "").startswith("MEDIA_")):
+                log_line('upload: media rejected; retrying as document')
+                kind = 'doc'
+            else:
+                raise
 
 
 def discard(path):
@@ -116,6 +128,18 @@ def cleanup_partials(files):
 
 # --- orchestration ------------------------------------------------------------
 async def run(args):
+    outcome = SimpleNamespace(files=[], sent=0)
+    try:
+        check_cancelled()
+        return await _run(args, outcome)
+    except Exception as error:
+        error_type = TransferCancelled if isinstance(error, TransferCancelled) else TransferError
+        raise error_type(redact(str(error)), sent=outcome.sent,
+                         total=len(outcome.files),
+                         retained=[f for f in outcome.files if Path(f).exists()]) from error
+
+
+async def _run(args, outcome):
     api_id = env_int("TELEGRAM_API")
     api_hash = os.environ.get("TELEGRAM_HASH", "")
     bot_token = os.environ.get("BOT_TOKEN", "")
@@ -139,6 +163,7 @@ async def run(args):
     started = time.time()
     log_line(f"start: {name}")        # no local path: it can leak account data
     produced = download(args.url, out_dir, name, headers, args.jobs, args.on_line)
+    outcome.files = produced
     got = os.path.getsize(produced[0])
     emit(f"downloaded {fmt_size(got)} in {time.time() - started:.1f}s", args.on_line)
 
@@ -146,8 +171,10 @@ async def run(args):
     if not args.no_split:
         files = (split_file(produced[0], split_size, args.on_line)
                  if len(produced) == 1 else produced)
+        outcome.files = files
         if len(files) > 1:
             emit(f"{len(files)} parts ready", args.on_line)
+    outcome.files = files
 
     if args.dry_run:
         log_line(f"dry-run: {len(files)} file(s) would be uploaded to {chat}")
@@ -157,7 +184,7 @@ async def run(args):
     async with upload_slot():
         uploader = None
         bot = (Client("haramain_leech_bot", api_id, api_hash, bot_token=bot_token,
-                      in_memory=True, no_updates=True,
+                      in_memory=True, no_updates=True, sleep_threshold=0,
                       workdir=str(HERE), parse_mode=enums.ParseMode.HTML,
                       link_preview_options=LinkPreviewOptions(is_disabled=True))
                if bot_token else None)
@@ -168,30 +195,36 @@ async def run(args):
         try:
             # session identity is never logged: usernames/names are account data
             if bot is not None:
-                await asyncio.wait_for(bot.start(), timeout=120)
+                await await_controlled(bot.start(), timeout=120)
                 log_line("session: bot ready")
+            report_stage('uploading')
             total = len(files)
             for i, f in enumerate(files, 1):
+                check_cancelled()
                 size = os.path.getsize(f)
                 needs_user = bool(session and (bot is None or chat == "me" or size > DEFAULT_SPLIT))
                 if needs_user and uploader is None:
                     uploader = Client("haramain_leech_user", api_id, api_hash,
                                       session_string=session, workdir=str(HERE),
+                                      sleep_threshold=0,
                                       parse_mode=enums.ParseMode.HTML,
                                       link_preview_options=LinkPreviewOptions(is_disabled=True))
-                    await asyncio.wait_for(uploader.start(), timeout=120)
-                    me = await asyncio.wait_for(uploader.get_me(), timeout=120)
+                    await await_controlled(uploader.start(), timeout=120)
+                    me = await await_controlled(uploader.get_me(), timeout=120)
                     user_premium = bool(getattr(me, "is_premium", False))
                     log_line(f"session: user ready (premium={user_premium})")
                 if uploader is not None and (chat == "me" or size > DEFAULT_SPLIT):
-                    if not user_premium:
-                        log_line(f"{fmt_size(size)} exceeds the 2000 MB non-premium limit")
+                    if not user_premium and size > DEFAULT_SPLIT:
+                        raise RuntimeError("File exceeds non-premium upload limit; file retained")
                     client = uploader
                 else:
                     client = bot or uploader
+                if client is bot and size > DEFAULT_SPLIT:
+                    raise RuntimeError("File exceeds bot upload limit; file retained")
                 emit(f"uploading {i}/{total} · {Path(f).name} · "
                      f"{fmt_size(size)} · {kind_label(f)}", args.on_line)
                 await upload_with_timeout(client, chat, f, as_doc=args.as_doc, thumb=thumb)
+                outcome.sent += 1
                 emit(f"sent {i}/{total} ✓", args.on_line)
                 if delete_after:
                     # free the disk as soon as Telegram confirmed the file
@@ -200,6 +233,7 @@ async def run(args):
                     else:
                         log_line(f"could not remove {Path(f).name}")
         finally:
+            transfer_failed = sys.exc_info()[0] is not None
             teardown_error = None
             for c in (uploader, bot):
                 if c is not None:
@@ -207,10 +241,10 @@ async def run(args):
                         await _stop_client(c)
                     except Exception as error:
                         teardown_error = error
-            if teardown_error is not None:
+            if teardown_error is not None and not transfer_failed:
                 raise teardown_error
 
-    cleanup_partials(files)
+    # The downloader owns and cleans its partials; never guess sidecar ownership.
     if delete_after:
         for f in files:
             extra = os.path.getsize(f) if os.path.exists(f) else 0
@@ -267,7 +301,10 @@ def run_leech_sync(url, *, chat=None, name=None, out=None, headers=None,
     """Blocking wrapper around run() for a bot handler.
 
     `progress(text)` is called for each download/upload line so the caller can
-    edit a status message. Returns the uploaded file paths; raises RuntimeError.
+    edit a status message. Returns the uploaded file paths (even if cleaned).
+    TransferError exposes sent (acknowledgements), total and retained (paths).
+    TransferCancelled is a TransferError; wrap this call in transfer_control
+    inside the worker thread for cancellation and machine-readable stages.
     """
     chat_id, err = resolve_target(chat, to_self=to_self)
     if err and target_dir is None:
@@ -304,7 +341,7 @@ def build_parser():
     ap.add_argument("-H", "--header", action="append",
                     help="extra request header (repeatable)")
     ap.add_argument("-j", "--jobs", type=int, default=4,
-                    help="aria2c connections (default 4)")
+                    help="compatibility option; ignored by the streaming downloader")
     ap.add_argument("--no-split", action="store_true",
                     help="upload as one file, never split")
     ap.add_argument("-s", "--split-size", help="split threshold, e.g. 1900mb")

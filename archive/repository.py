@@ -1,7 +1,27 @@
 """Read-only SQLite queries for the media archive."""
+
 import sqlite3
+from contextlib import closing
+from pathlib import Path
 
 PAGE_SIZE = 5
+
+
+def database_usable(path):
+    """True when the read-only database has all columns the bot queries."""
+    target = Path(path)
+    try:
+        with closing(
+            sqlite3.connect(target.resolve().as_uri() + "?mode=ro", uri=True)
+        ) as db:
+            columns = {row[1] for row in db.execute("PRAGMA table_info(media)")}
+            required = {name.strip() for name in Archive.COLS.split(",")}
+            if not required <= columns:
+                return False
+            db.execute("SELECT COUNT(*) FROM media").fetchone()
+        return True
+    except (OSError, sqlite3.Error, ValueError):
+        return False
 
 
 class Archive:
@@ -10,7 +30,7 @@ class Archive:
     COLS = "url, post, kind, year, month, day, slug, fname"
 
     def __init__(self, path):
-        self.db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        self.db = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)
         self.db.row_factory = sqlite3.Row
         self._stats_cache = None
 
@@ -26,9 +46,11 @@ class Archive:
             totals = self.db.execute(
                 "SELECT COUNT(*), COUNT(DISTINCT url), MIN(year), MAX(year) FROM media"
             ).fetchone()
-            by_kind = dict(self.db.execute(
-                "SELECT kind, COUNT(DISTINCT url) FROM media GROUP BY kind"
-            ).fetchall())
+            by_kind = dict(
+                self.db.execute(
+                    "SELECT kind, COUNT(DISTINCT url) FROM media GROUP BY kind"
+                ).fetchall()
+            )
             self.db.commit()
         except Exception:
             self.db.rollback()
@@ -40,7 +62,8 @@ class Archive:
     def latest(self, n=5):
         return self.db.execute(
             f"SELECT {self.COLS} FROM media "
-            "ORDER BY year DESC, month DESC, day DESC, id DESC LIMIT ?", (n,)
+            "ORDER BY year DESC, month DESC, day DESC, id DESC LIMIT ?",
+            (n,),
         ).fetchall()
 
     # --- paged variants: (rows, total) so a caller can show "page i/n" ---
@@ -49,11 +72,12 @@ class Archive:
         if d:
             where, args = where + " AND day=?", args + [d]
         total = self.db.execute(
-            f"SELECT COUNT(*) FROM media WHERE {where}", args).fetchone()[0]
+            f"SELECT COUNT(*) FROM media WHERE {where}", args
+        ).fetchone()[0]
         rows = self.db.execute(
-            f"SELECT {self.COLS} FROM media WHERE {where} "
-            "ORDER BY id LIMIT ? OFFSET ?",
-            args + [PAGE_SIZE, (page - 1) * PAGE_SIZE]).fetchall()
+            f"SELECT {self.COLS} FROM media WHERE {where} ORDER BY id LIMIT ? OFFSET ?",
+            args + [PAGE_SIZE, (page - 1) * PAGE_SIZE],
+        ).fetchall()
         return rows, total
 
     def search_page(self, terms, page=1):
@@ -61,15 +85,18 @@ class Archive:
         args = [f"%{t}%" for t in terms for _ in (0, 1)]
         cond = " AND ".join(where)
         total = self.db.execute(
-            f"SELECT COUNT(*) FROM media WHERE {cond}", args).fetchone()[0]
+            f"SELECT COUNT(*) FROM media WHERE {cond}", args
+        ).fetchone()[0]
         rows = self.db.execute(
             f"SELECT {self.COLS} FROM media WHERE {cond} LIMIT ? OFFSET ?",
-            args + [PAGE_SIZE, (page - 1) * PAGE_SIZE]).fetchall()
+            args + [PAGE_SIZE, (page - 1) * PAGE_SIZE],
+        ).fetchall()
         return rows, total
 
     def year_stats(self, y):
         return self.db.execute(
-            "SELECT kind, COUNT(DISTINCT url) FROM media WHERE year=? GROUP BY kind", (y,)
+            "SELECT kind, COUNT(DISTINCT url) FROM media WHERE year=? GROUP BY kind",
+            (y,),
         ).fetchall()
 
     # --- year browser: years -> months -> paged items ---
@@ -77,11 +104,13 @@ class Archive:
         """[(year, url count)] newest first."""
         return self.db.execute(
             "SELECT year, COUNT(DISTINCT url) FROM media "
-            "WHERE year IS NOT NULL GROUP BY year ORDER BY year DESC").fetchall()
+            "WHERE year IS NOT NULL GROUP BY year ORDER BY year DESC"
+        ).fetchall()
 
     def months_of(self, y):
         """[(month, url count)] for one year, oldest first."""
         return self.db.execute(
             "SELECT month, COUNT(DISTINCT url) FROM media "
             "WHERE year=? AND month IS NOT NULL GROUP BY month ORDER BY month",
-            (y,)).fetchall()
+            (y,),
+        ).fetchall()

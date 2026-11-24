@@ -11,20 +11,13 @@ the memory footprint is tiny.
 ## Setup
 
 ```bash
-# 0. dependencies (bot.sh does this for you on ./bot.sh run|start)
+# 0. dependencies (start.sh installs anything missing)
 pip install -r requirements.txt
 
-# 1. import the dump (built by build_dump.py) into sqlite — or simply
-#    run `./bot.sh init` from the repo root, which does it for you
-python3 import_dump.py --dump haramain --db archive.db
-
-# 2. get a token from @BotFather -> put it in .env
+# 1. start: harvests the archive if the DB is missing, then runs in foreground
 cp .env.example .env
-nano .env          # BOT_TOKEN=...
-
-# 3. run — foreground
-./bot.sh run        # (or: python3 bot.py directly)
-#    background:  ./bot.sh start | stop | restart
+nano .env          # BOT_TOKEN=... (daily refresh defaults to 03:00 UTC)
+bash start.sh      # (or: python3 bot.py directly, once archive.db exists)
 ```
 `.env` is loaded from next to the script (or cwd). Real env vars win
 when a key is set in both places.
@@ -49,7 +42,7 @@ mengetik. Setiap layar punya baris `[ ⬅️ … ] [ 🔝 Menu ]` untuk naik lag
 
 Bot juga mengaktifkan tombol **Menu** bawaan Telegram di sebelah kolom pesan
 pada chat privat. Tombol ini membuka daftar `/start`, `/latest`, `/search`,
-`/date`, `/year`, `/stat`, `/imaams`, `/language`, dan `/help`. Perintah yang
+`/date`, `/year`, `/stat`, `/imaams`, `/language`, `/status`, `/cancel`, dan `/help`. Perintah yang
 memerlukan argumen tetap harus dilengkapi pengguna sebelum dikirim.
 Registrasi dilakukan saat startup dan `/start`; perubahan bahasa juga
 memperbarui deskripsi perintah untuk chat tersebut. Nama dan posisi tombol
@@ -142,18 +135,26 @@ walaupun pesan notifikasi terakhir gagal. Antrean tidak persisten setelah restar
 Upload membutuhkan TELEGRAM_API, TELEGRAM_HASH dan BOT_TOKEN/USER_SESSION_STRING.
 Standalone `python3 leech.py <url>` tetap tersedia untuk operator server.
 
-## 500 MB RAM server
+Setiap job memiliki state queued/downloading/waiting_upload/uploading dan status
+terminal succeeded/failed/cancelled. Gunakan `/status` untuk antrean di chat ini,
+`/status <id>` untuk satu job, dan `/cancel <id>` atau tombol Cancel untuk
+membatalkan. ID hanya berlaku dalam chat pemilik job. Pembatalan aktif bersifat
+cooperative: koneksi/download/split/upload memeriksa cancel; operasi socket yang
+sedang menunggu tetap tunduk pada deadline. File yang pengirimannya belum
+terkonfirmasi tidak dihapus. Status diedit paling sering tiga detik sekali dan
+teks identik tidak dikirim ulang.
+
+## Hosted / low-memory servers
 
 ```bash
-./bot.sh start     # background; log in bot.log, pid in bot.pid
-./bot.sh restart   # after an archive update
-./bot.sh stop
+bash start.sh      # foreground: logs go to stdout; redirect if you need a file
 ```
 
-`run`, `start` and `restart` first check that `requirements.txt` is
-satisfied and pip-install whatever is missing (set `INSTALL_DEPS=0` to skip
-that, e.g. on a machine with no package index). `init` and `stop` never
-touch pip.
+`start.sh` checks `requirements.txt` and pip-installs whatever is missing
+(set `INSTALL_DEPS=0` to skip, e.g. on a machine with no package index),
+bootstraps the database if it is missing (`BOOTSTRAP=0` to skip), then execs
+the bot. There is no background mode, pidfile or logfile — let the hosting
+panel manage the process.
 
 Or use systemd (see `deploy/haramain-bot.service`). That system-wide template
 requires an existing unprivileged `haramain` user/group; edit `User`, `Group`,
@@ -162,14 +163,40 @@ access to the repository/runtime files. Do not run the service as root.
 
 ## Updating the archive
 
-Set `DB_UPDATE_TIME=03:00` in `.env` to refresh the archive daily at 03:00 UTC while the foreground bot is running. No crontab or second terminal is needed. Leave it blank to disable. Updates require the bot process to remain alive. A missed schedule while stopped
-is not replayed on startup. New copies leave scheduling disabled until configured.
-`DB_UPDATE_CRON` and `cron-install` are no longer used.
+Daily refresh defaults to `03:00` UTC when `DB_UPDATE_TIME` is not present.
+An **explicitly blank** `DB_UPDATE_TIME=` disables automatic refresh; a blank
+value already saved in the hosting panel overrides `.env` and the code default.
+No crontab, second terminal or keep-alive ping is required.
 
-Foreground hosting startup stays `bash bot.sh init && bash bot.sh run`.
-Manual refreshes and scheduled jobs share `.update.lock` and reject concurrent
-updates. Pipeline/import logs appear in the same console (or `bot.log` when
-started in background). A failed refresh is logged and the next attempt is the
-next daily schedule; no immediate retry storm is started.
+Before polling, the bot verifies that the SQLite file exposes every column it
+queries. An existing but unusable file is refreshed synchronously when automatic
+refresh is enabled; otherwise startup exits with a repair command instead of
+failing later on the first query. A repair that still produces an unusable
+schema is a startup error.
 
-To update manually, run `bash bot.sh update`. The bot needs no restart — SQLite readers see the committed import on their next query.
+At startup, catch-up runs in the maintenance worker when `meta.built` is before
+the most recent daily schedule, or when the import is at least
+`DB_UPDATE_MAX_AGE_HOURS` old (default 24). Setting max age to `0` disables
+startup catch-up only. New timestamps are UTC with an offset; legacy naive
+import timestamps are interpreted as UTC.
+
+A failed refresh retries after `DB_UPDATE_RETRY_SEC` (default 300 seconds),
+then exponential backoff up to one hour. It does not kill polling or erase the
+previous SQLite catalog. `DB_UPDATE_TIMEOUT_SEC` (default 7200 seconds) bounds
+the full pipeline; timed-out shells and their children are terminated together.
+
+`bash start.sh` is the single foreground startup command. Manual and scheduled
+refreshes use the same `.update.lock`, interpreter and normalized paths.
+Logs include `[update] sitemap/feed/build/import: started/complete` and a final
+success/failure line. `.update-status.json` records state, stage, timestamps and
+last success without tokens or raw network output.
+
+```bash
+python3 -m bot.update --status  # read-only local diagnostics
+python3 -m bot.update           # manual refresh
+```
+
+A refresh is successful only after the import transaction commits. Existing
+SQLite readers see the committed rows without restarting the bot. `SWEEP=1`
+adds the optional slow page scrape. Runtime files, work cache and database
+must be writable and fit within the hosting allocation.

@@ -12,10 +12,10 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(settings.get('User'), 'haramain')
         self.assertEqual(settings.get('NoNewPrivileges'), 'true')
 
-    def test_template_defaults_to_no_scheduled_network_job(self):
+    def test_template_enables_daily_archive_refresh(self):
         settings = dict(line.split('=', 1) for line in
                         (ROOT / '.env.example').read_text().splitlines()
                         if '=' in line and not line.startswith('#'))
-        self.assertEqual(settings['DB_UPDATE_TIME'], '')
+        self.assertEqual(settings['DB_UPDATE_TIME'], '03:00')
         self.assertIn('TELEGRAM_API', settings)
         self.assertIn('TELEGRAM_HASH', settings)
