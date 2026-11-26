@@ -144,6 +144,13 @@ sedang menunggu tetap tunduk pada deadline. File yang pengirimannya belum
 terkonfirmasi tidak dihapus. Status diedit paling sering tiga detik sekali dan
 teks identik tidak dikirim ulang.
 
+Pesan status (yang bertombol Cancel/Status) dihapus setelah job selesai, jadi
+tidak ada lagi teks "queued" duplikat. Yang tertinggal hanya satu kartu hasil:
+nama file, jenis, ukuran, host, dan label **🔗 Buka link langsung** yang membuka
+URL mp3/video penuh. URL lengkap tidak pernah dicetak sebagai teks biasa; ia
+hanya menjadi target tautan. Kartu hanya dikirim untuk job yang berhasil — job
+gagal atau dibatalkan tetap memakai ringkasan teks lama beserta alasannya.
+
 ## Hosted / low-memory servers
 
 ```bash

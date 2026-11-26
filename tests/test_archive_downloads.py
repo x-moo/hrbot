@@ -20,16 +20,29 @@ class ArchiveDownloadTests(unittest.TestCase):
         def callback(chat):
             return {'id': 'tap', 'data': data, 'message': {
                 'message_id': 3, 'chat': {'id': chat, 'type': 'private'}}}
-        with patch.object(app, 'start_leech', return_value=('started', True)) as start, patch.object(app, 'tg_call'), patch.object(app, 'send'):
+        with patch.object(app, 'start_leech', return_value=('started', True)) as start, patch.object(app, 'tg_call'), patch.object(app, 'send') as send:
             app._handle_callback(callback(8), Mock(), 'test')
             start.assert_not_called()
             app._handle_callback(callback(7), Mock(), 'test')
             self.assertEqual(start.call_args.args[2], rows[0]['url'])
+            # start() already posted the status message; no duplicate follow-up
+            send.assert_not_called()
         self.assertLessEqual(len(data.encode()), 64)
         app._DOWNLOADS[data[4:]]['expires'] = 0
         with patch.object(app, 'start_leech') as start, patch.object(app, 'tg_call'):
             app._handle_callback(callback(7), Mock(), 'test')
             start.assert_not_called()
+
+    def test_rejected_start_still_reports_the_reason(self):
+        rows = [{'url': 'https://archive.example/audio.mp3', 'fname': 'audio.mp3'}]
+        data = app._download_rows(rows, 7)[0][0]['callback_data'].replace('item:', 'get:')
+        update = {'id': 'tap', 'data': data, 'message': {
+            'message_id': 3, 'chat': {'id': 7, 'type': 'private'}}}
+        reason = 'This recording is already queued.'
+        with patch.object(app, 'start_leech', return_value=(reason, False)), \
+                patch.object(app, 'send') as send, patch.object(app, 'tg_call'):
+            app._handle_callback(update, Mock(), 'test')
+        send.assert_called_once_with('test', 7, reason)
 
     def test_latest_and_paged_results_have_download_buttons(self):
         row = {'url': 'https://archive.example/audio.mp3', 'fname': 'audio.mp3',

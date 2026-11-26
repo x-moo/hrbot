@@ -9,6 +9,7 @@ import time
 import re
 import os
 
+from bot.i18n import translate
 from bot.jobs import Job, JobRejected, JobState
 from bot.telegram import NO_PREVIEW, TgError
 from leech.utils import redact
@@ -40,12 +41,27 @@ def mask_url(url):
     return (f'{host}/…/{name}' if name else host)[:200]
 
 
+AUDIO_SUFFIXES = {'mp3', 'wma', 'm4a', 'ogg', 'oga', 'aac', 'flac', 'wav', 'ra', 'ram'}
+VIDEO_SUFFIXES = {'wmv', 'asf', 'rm', 'mp4', '3gp', 'mkv', 'avi', 'swf'}
+_SIZE_RE = re.compile(r'^downloaded (\d[\d.]* [KMGT]?B) in ')
+
+
+def format_bytes(count):
+    value = float(count)
+    for unit in ('B', 'KB', 'MB', 'GB'):
+        if value < 1024 or unit == 'GB':
+            return f'{value:.0f} B' if unit == 'B' else f'{value:.1f} {unit}'
+        value /= 1024
+    return f'{value:.1f} GB'
+
+
 class DownloadService:
-    def __init__(self, *, registry, executor, api, notify, root):
+    def __init__(self, *, registry, executor, api, notify, root, card=None):
         self.registry = registry
         self.executor = executor
         self.api = api
         self.notify = notify
+        self.card = card
         self.root = root
         self._pending = deque()
         self._notices = deque(maxlen=100)
@@ -94,6 +110,66 @@ class DownloadService:
                     print(f'download #{job.id}: status {error_summary(error)}', flush=True)
             except Exception as error:
                 print(f'download #{job.id}: status {error_summary(error)}', flush=True)
+
+    @staticmethod
+    def _link(url, label):
+        """Markdown link whose target keeps the full URL out of the visible text."""
+        parsed = urlsplit(url)
+        if parsed.scheme not in ('http', 'https') or not parsed.netloc:
+            return ''
+        # Parentheses and spaces would break the [text](url) syntax.
+        target = (str(url).replace('(', '%28').replace(')', '%29')
+                  .replace(' ', '%20').replace('\n', ''))
+        return f'🔗 [{label}]({target})'
+
+    @staticmethod
+    def _kind(name):
+        suffix = Path(name).suffix.lstrip('.').lower()
+        if suffix in AUDIO_SUFFIXES:
+            return '🎙️ audio'
+        if suffix in VIDEO_SUFFIXES:
+            return '🎬 video'
+        return '📦 file'
+
+    @staticmethod
+    def _size(job):
+        """Downloaded size from the pipeline's own progress line, else the file."""
+        for line in reversed(job.lines):
+            match = _SIZE_RE.match(str(line))
+            if match:
+                return match.group(1)
+        total = 0
+        for path in job.files:
+            try:
+                total += Path(path).stat().st_size
+            except OSError:
+                pass
+        return format_bytes(total) if total else ''
+
+    def card_text(self, job):
+        """Completion card: what was saved plus a clickable direct link."""
+        names = [Path(path).name for path in job.files]
+        shown = ', '.join(names[:3])
+        if len(names) > 3:
+            shown += f' … (+{len(names) - 3})'
+        details = [self._kind(names[0]) if names else '📦 file']
+        size = self._size(job)
+        if size:
+            details.append(size)
+        host = urlsplit(job.url).hostname
+        if host:
+            details.append(host)
+        lines = [
+            f'✅ #{job.id} · {translate("done").capitalize()} — '
+            f'{len(names)} {translate("file(s)")}',
+            '',
+            f'📄 {escape_markdown(shown or "recording")}',
+            escape_markdown(' · '.join(details)),
+        ]
+        link = self._link(job.url, translate('Open direct link'))
+        if link:
+            lines.append(link)
+        return '\n'.join(lines)
 
     def cancel(self, job_id, *, chat):
         """Signal only on the polling path; workers handle notifications."""
@@ -303,8 +379,17 @@ class DownloadService:
         if job.retained:
             tail += ' · retained: ' + ', '.join(Path(path).name for path in job.retained)
         try:
-            self.notify(job.token, job.chat, [redact(line) for line in
-                        [f'#{job.id} {job.state.value}', *job.lines, '', tail]])
+            if self.card is not None and job.state is JobState.SUCCEEDED:
+                try:
+                    self.card(job.token, job.chat, self.card_text(job))
+                except Exception as error:
+                    # The transfer succeeded; never lose the receipt over formatting.
+                    print(f'download #{job.id}: card {error_summary(error)}', flush=True)
+                    self.notify(job.token, job.chat, [redact(line) for line in
+                                [f'#{job.id} {job.state.value}', *job.lines, '', tail]])
+            else:
+                self.notify(job.token, job.chat, [redact(line) for line in
+                            [f'#{job.id} {job.state.value}', *job.lines, '', tail]])
         except Exception as error:
             print(f'download #{job.id}: notification {error_summary(error)}', flush=True)
         if job.message_id is not None:

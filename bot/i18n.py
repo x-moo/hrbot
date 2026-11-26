@@ -61,6 +61,7 @@ PHRASES = [
     ('downloading...', 'mengunduh...'), ('downloaded', 'terunduh'),
     ('uploading', 'mengunggah'), ('sent', 'terkirim'),
     ('storage freed:', 'penyimpanan dibebaskan:'),
+    ('Open direct link', 'Buka link langsung'),
     ('🌐 Language', '🌐 Bahasa'),
     ('Choose a menu below, or use commands directly', 'Pilih menu di bawah, atau pakai perintah langsung'),
     ('Search results show 5 per page — use ⬅️ Back / Next ➡️.', 'Hasil pencarian muncul 5 per halaman — tombol ⬅️ Back / Next ➡️.'),

@@ -587,7 +587,7 @@ def _handle_callback(cb, db, token):
             )
             return
         answer()
-        note, _ = start_leech(
+        note, started = start_leech(
             token,
             chat,
             item["url"],
@@ -597,7 +597,9 @@ def _handle_callback(cb, db, token):
             False,
             to_self=False,
         )
-        send(token, chat, note)
+        if not started:
+            # The service already posted the status message when it started.
+            send(token, chat, note)
         return
 
     if data in ("lang:en", "lang:id"):
@@ -688,6 +690,7 @@ def _download_service():
             notify=lambda token, chat, lines: send_long(
                 token, chat, [escape_markdown(line) for line in lines]
             ),
+            card=lambda token, chat, text: send(token, chat, text),
             root=lambda: HERE,
         )
     return _DOWNLOAD_SERVICE
