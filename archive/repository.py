@@ -1,5 +1,6 @@
 """Read-only SQLite queries for the media archive."""
 
+import json
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -34,6 +35,22 @@ class Archive:
         self.db.row_factory = sqlite3.Row
         self._stats_cache = None
 
+    def _precomputed(self):
+        """Aggregates written by import_dump.py; None for older databases."""
+        try:
+            row = self.db.execute("SELECT v FROM meta WHERE k='stats'").fetchone()
+        except sqlite3.OperationalError:
+            return None
+        if not row or not row[0]:
+            return None
+        try:
+            payload = json.loads(row[0])
+            payload["total"] = int(payload["total"])
+            payload["unique"] = int(payload["unique"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        return payload
+
     def stats(self):
         version = self.db.execute("PRAGMA data_version").fetchone()[0]
         cached = self._stats_cache
@@ -41,23 +58,41 @@ class Archive:
             totals, by_kind = cached[1]
             return totals, dict(by_kind)
 
-        self.db.execute("BEGIN")
-        try:
-            totals = self.db.execute(
-                "SELECT COUNT(*), COUNT(DISTINCT url), MIN(year), MAX(year) FROM media"
-            ).fetchone()
-            by_kind = dict(
-                self.db.execute(
-                    "SELECT kind, COUNT(DISTINCT url) FROM media GROUP BY kind"
-                ).fetchall()
+        payload = self._precomputed()
+        if payload is not None:
+            totals = (
+                payload["total"],
+                payload["unique"],
+                payload.get("min_year"),
+                payload.get("max_year"),
             )
-            self.db.commit()
-        except Exception:
-            self.db.rollback()
-            raise
+            by_kind = dict(payload.get("kinds") or {})
+        else:
+            self.db.execute("BEGIN")
+            try:
+                totals = self.db.execute(
+                    "SELECT COUNT(*), COUNT(DISTINCT url), MIN(year), MAX(year) FROM media"
+                ).fetchone()
+                by_kind = dict(
+                    self.db.execute(
+                        "SELECT kind, COUNT(DISTINCT url) FROM media GROUP BY kind"
+                    ).fetchall()
+                )
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                raise
 
         self._stats_cache = (version, (totals, by_kind))
         return totals, dict(by_kind)
+
+    def built(self):
+        """UTC timestamp of the last import, or None when it is unknown."""
+        try:
+            row = self.db.execute("SELECT v FROM meta WHERE k='built'").fetchone()
+        except sqlite3.OperationalError:
+            return None
+        return row[0] if row else None
 
     def latest(self, n=5):
         return self.db.execute(
@@ -114,10 +149,16 @@ class Archive:
     # --- year browser: years -> months -> paged items ---
     def years(self):
         """[(year, url count)] newest first."""
-        return self.db.execute(
-            "SELECT year, COUNT(DISTINCT url) FROM media "
-            "WHERE year IS NOT NULL GROUP BY year ORDER BY year DESC"
-        ).fetchall()
+        payload = self._precomputed()
+        if payload is not None and payload.get("years") is not None:
+            return [(int(year), int(number)) for year, number in payload["years"]]
+        return [
+            (row[0], row[1])
+            for row in self.db.execute(
+                "SELECT year, COUNT(DISTINCT url) FROM media "
+                "WHERE year IS NOT NULL GROUP BY year ORDER BY year DESC"
+            )
+        ]
 
     def months_of(self, y):
         """[(month, url count)] for one year, oldest first."""

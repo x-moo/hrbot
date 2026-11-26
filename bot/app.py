@@ -422,6 +422,9 @@ def _screen_stat(db):
     lines += [f"• {names.get(k, k)}: {c:,}" for k, c in sorted(kinds.items())]
     if y0:
         lines.append(f"• period: {y0}–{y1}")
+    built = db.built() if hasattr(db, "built") else None
+    if isinstance(built, str) and built:
+        lines.append(f"• updated: {built[:16].replace('T', ' ')} UTC")
     return "\n".join(lines), _mk([[HOME]])
 
 
@@ -571,10 +574,35 @@ def _handle_callback(cb, db, token):
         for index, url in enumerate(videos[:2], 1):
             label = "▶️ YouTube" if len(videos) == 1 else f"▶️ YouTube {index}"
             buttons.append({"text": label, "url": url})
+        if len(videos) > 2:
+            buttons.append({"text": f"▶️ All YouTube ({len(videos)})",
+                            "callback_data": "yt:" + key})
         buttons.append({"text": "⬇️ Download", "callback_data": "get:" + key})
         markup = _mk([buttons, [{"text": "⬅️ Back", "callback_data": "list:" + key}]])
         name = record.get("fname") or record.get("slug") or "Recording"
         _push(token, chat, name, markup, edit_of=message_id, plain=True)
+        return
+
+    if data.startswith("yt:"):
+        key = data[3:]
+        with _DOWNLOAD_LOCK:
+            item = _DOWNLOADS.get(key)
+            valid = item and item["chat"] == chat and item["expires"] >= time.time()
+        if not valid:
+            answer(translate("Results have expired — run the command again."), alert=True)
+            return
+        answer()
+        record = item["row"]
+        videos = db.videos_for(record.get("post", "")) if record.get("post") else []
+        if not videos:
+            send(token, chat, translate("No YouTube links for this recording."))
+            return
+        _push(
+            token, chat, f"▶️ YouTube ({len(videos)})",
+            _mk([[{"text": f"▶️ YouTube {index}", "url": url}]
+                 for index, url in enumerate(videos, 1)]),
+            plain=True,
+        )
         return
 
     if data.startswith("get:"):

@@ -77,8 +77,10 @@ atomically. Inspect it without network access:
 python3 -m bot.update --status
 ```
 
-The database importer commits rows and UTC `meta.built` together; a failed import
-rolls back, and existing read-only bot connections see the next successful commit.
+The database importer commits rows, UTC `meta.built` and precomputed aggregates
+(`meta.stats`, so `/stat` and the year menu never rescan the table) together; a
+failed import rolls back, and existing read-only bot connections see the next
+successful commit.
 Manual refresh uses `python3 -m bot.update` with the same cross-process lock.
 See [Botkeep deployment](docs/BOTKEEP.md) and [architecture](docs/ARCHITECTURE.md).
 

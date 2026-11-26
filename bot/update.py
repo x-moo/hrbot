@@ -237,8 +237,12 @@ def _perform_update(lock_fd):
             import_started = dt.datetime.now(dt.timezone.utc)
         _write_status("running", stage=stage)
         print(f"[update] {stage}: started", flush=True)
+        stage_started = time.monotonic()
         _run_command(command, cwd=cwd, env=env, lock_fd=lock_fd, timeout=budget)
-        print(f"[update] {stage}: complete", flush=True)
+        print(
+            f"[update] {stage}: complete in {time.monotonic() - stage_started:.1f}s",
+            flush=True,
+        )
     _write_status("running", stage="verify")
     return _verify_database(env["DB"], import_started)
 

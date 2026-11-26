@@ -62,6 +62,8 @@ PHRASES = [
     ('uploading', 'mengunggah'), ('sent', 'terkirim'),
     ('storage freed:', 'penyimpanan dibebaskan:'),
     ('Open direct link', 'Buka link langsung'),
+    ('No YouTube links for this recording.',
+     'Belum ada link YouTube untuk rekaman ini.'),
     ('🌐 Language', '🌐 Bahasa'),
     ('Choose a menu below, or use commands directly', 'Pilih menu di bawah, atau pakai perintah langsung'),
     ('Search results show 5 per page — use ⬅️ Back / Next ➡️.', 'Hasil pencarian muncul 5 per halaman — tombol ⬅️ Back / Next ➡️.'),

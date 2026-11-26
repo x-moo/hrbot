@@ -68,7 +68,7 @@ bertahan setelah restart dan impor ulang. Direktori repository harus writable.
  ├─ 🗓 Year          → daftar tahun (jumlah URL per tahun)
  │     └─ 2026 → daftar bulan (jumlah per bulan)
  │           └─ Oct → item berhalaman 5-an + ⬅️ Months
- ├─ 📊 Stat          → total baris/URL, audio vs video, periode
+ ├─ 📊 Stat          → total baris/URL, audio vs video, periode, waktu update
  └─ ❓ Help
 ```
 

@@ -39,3 +39,40 @@ class DetailTests(unittest.TestCase):
                 self.assertEqual(calls[-1][1]['text'], app.translate(text))
         finally:
             app.current_chat.reset(context)
+
+    def test_more_than_two_youtube_links_opens_the_full_list(self):
+        row = {'url': 'https://media.example/test.mp3', 'fname': 'test.mp3',
+               'post': 'https://archive.example/post', 'slug': 'test',
+               'year': 2026, 'month': 11, 'day': 16, 'kind': 'audio'}
+        videos = [f'https://www.youtube.com/watch?v=video{index}' for index in range(4)]
+        db = Mock()
+        db.latest.return_value = [row]
+        db.videos_for.return_value = videos
+        context = app.current_chat.set(7)
+        calls = []
+
+        def api(token, method, payload, **kwargs):
+            calls.append(payload)
+            return {'message_id': 3}
+
+        def tap(data):
+            app._handle_callback({'id': 'cb', 'data': data, 'message': {
+                'message_id': 3, 'chat': {'id': 7}}}, db, 'test')
+
+        try:
+            text, markup = app._screen_latest(db)
+            item = markup['inline_keyboard'][0][0]
+            with patch.object(app, 'tg_call', api):
+                app._push('test', 7, text, markup)
+                tap(item['callback_data'])
+                buttons = [b for r in calls[-1]['reply_markup']['inline_keyboard'] for b in r]
+                self.assertEqual(
+                    [b['url'] for b in buttons if b.get('url') in videos], videos[:2]
+                )
+                more = next(b for b in buttons
+                            if b.get('callback_data', '').startswith('yt:'))
+                tap(more['callback_data'])
+                sent = calls[-1]['reply_markup']['inline_keyboard']
+                self.assertEqual([b['url'] for r in sent for b in r], videos)
+        finally:
+            app.current_chat.reset(context)

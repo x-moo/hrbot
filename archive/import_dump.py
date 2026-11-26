@@ -7,7 +7,8 @@ Primary source: <dump>/csv/catalog.csv  (year,kind,url,host,source_post)
 Fallback      : <dump>/years/*/*_with_source.tsv
 
 DB schema: one `media` table (url, post, kind, year, month, day, slug, fname)
-plus a `meta` table (row count, import time). ~100K rows -> a few MB.
+plus a `meta` table (row count, import time, precomputed aggregates).
+~100K rows -> a few MB.
 """
 
 import argparse
@@ -15,6 +16,7 @@ import csv
 import datetime
 import glob
 import itertools
+import json
 import os
 import re
 import sqlite3
@@ -137,11 +139,35 @@ def import_catalog(dump_dir, database):
             built = datetime.datetime.now(datetime.timezone.utc).isoformat(
                 timespec="seconds"
             )
+            # Precompute the aggregates the bot reads on every /stat and year
+            # menu: COUNT(DISTINCT url) scans the whole table, so doing it once
+            # here keeps those screens at O(1) instead of hundreds of ms.
+            unique = db.execute("SELECT COUNT(DISTINCT url) FROM media").fetchone()[0]
+            summary = {
+                "total": count,
+                "unique": unique,
+                "min_year": db.execute("SELECT MIN(year) FROM media").fetchone()[0],
+                "max_year": db.execute("SELECT MAX(year) FROM media").fetchone()[0],
+                "kinds": dict(
+                    (str(kind), number) for kind, number in db.execute(
+                        "SELECT kind, COUNT(DISTINCT url) FROM media GROUP BY kind"
+                    )
+                ),
+                "years": [
+                    [int(year), number] for year, number in db.execute(
+                        "SELECT year, COUNT(DISTINCT url) FROM media "
+                        "WHERE year IS NOT NULL GROUP BY year ORDER BY year DESC"
+                    )
+                ],
+            }
             db.executemany(
                 "INSERT OR REPLACE INTO meta VALUES (?,?)",
-                [("rows", str(count)), ("built", built)],
+                [
+                    ("rows", str(count)),
+                    ("built", built),
+                    ("stats", json.dumps(summary, sort_keys=True)),
+                ],
             )
-            unique = db.execute("SELECT COUNT(DISTINCT url) FROM media").fetchone()[0]
             db.commit()
         except BaseException:
             db.rollback()
