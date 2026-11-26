@@ -44,8 +44,6 @@ except ImportError:                                         # noqa: BLE001
 HERE = Path(__file__).resolve().parents[1]
 MB = 1024 * 1024
 DEFAULT_SPLIT = 2000 * MB           # MTProto cap for a non-premium account
-PREMIUM_SPLIT = 4000 * MB           # MTProto cap with Premium
-UPDATE_EVERY = 3.0                  # seconds between chat status updates
 
 
 # --- upload -------------------------------------------------------------------
@@ -120,12 +118,6 @@ def prune_dir(path, stop=None):
     return True
 
 
-def cleanup_partials(files):
-    for f in list(files):
-        for suffix in (".part", ".aria2"):
-            discard(Path(f + suffix))
-
-
 # --- orchestration ------------------------------------------------------------
 async def run(args):
     outcome = SimpleNamespace(files=[], sent=0)
@@ -162,7 +154,7 @@ async def _run(args, outcome):
 
     started = time.time()
     log_line(f"start: {name}")        # no local path: it can leak account data
-    produced = download(args.url, out_dir, name, headers, args.jobs, args.on_line)
+    produced = download(args.url, out_dir, name, headers, args.on_line)
     outcome.files = produced
     got = os.path.getsize(produced[0])
     emit(f"downloaded {fmt_size(got)} in {time.time() - started:.1f}s", args.on_line)
@@ -295,7 +287,7 @@ def resolve_target(chat, *, to_self=False):
 
 
 def run_leech_sync(url, *, chat=None, name=None, out=None, headers=None,
-                   jobs=4, split_size=None, as_doc=False, thumb=None,
+                   split_size=None, as_doc=False, thumb=None,
                    no_split=False, to_self=False, keep=False, progress=None,
                    target_dir=None):
     """Blocking wrapper around run() for a bot handler.
@@ -312,7 +304,7 @@ def run_leech_sync(url, *, chat=None, name=None, out=None, headers=None,
     ns = SimpleNamespace(
         url=url, out=str(target_dir) if target_dir is not None else out, name=name,
         chat=str(chat_id) if chat_id not in (None, "me") else "me",
-        header=list(headers or []), jobs=jobs, no_split=no_split,
+        header=list(headers or []), no_split=no_split,
         split_size=split_size, keep=keep, as_doc=as_doc, thumb=thumb,
         dry_run=False, on_line=progress)
     _check_credentials()

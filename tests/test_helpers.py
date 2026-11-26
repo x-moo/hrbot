@@ -59,8 +59,3 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(chunk_text(['a', '', 'b'], limit=4), ['a\n\nb'])
         self.assertEqual(chunk_text(['a', 'bcdefg', 'h'], limit=4),
                          ['a', 'bcde', 'fg\nh'])
-
-    def test_downloader_progress_excludes_url(self):
-        from leech.downloader import progress_of
-        self.assertEqual(progress_of('[10%] https://example.invalid/?secret=abc'),
-                         'downloading... 10%')

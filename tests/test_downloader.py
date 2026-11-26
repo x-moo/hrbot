@@ -5,14 +5,13 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
-from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 (ROOT / '.cache').mkdir(exist_ok=True)
 
 
 class Downloads(unittest.TestCase):
-    def test_http_without_aria2(self):
+    def test_http_download_uses_python_backend(self):
         from leech.downloader import download
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             base = Path(directory)
@@ -23,24 +22,21 @@ class Downloads(unittest.TestCase):
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:
-                with patch('leech.downloader.shutil.which', return_value=None), patch(
-                    'leech.downloader.subprocess.Popen', side_effect=AssertionError('external executable')):
-                    files = download(f'http://127.0.0.1:{server.server_port}/source.mp3',
-                                     base / 'downloads', 'file.mp3', [], 4)
+                files = download(f'http://127.0.0.1:{server.server_port}/source.mp3',
+                                 base / 'downloads', 'file.mp3', [])
                 self.assertEqual(Path(files[0]).read_bytes(), payload)
             finally:
                 server.shutdown()
                 server.server_close()
                 thread.join()
 
-    def test_split_without_executable(self):
+    def test_split_uses_python(self):
         from leech.downloader import split_file
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             source = Path(directory) / 'file.bin'
             payload = b'0123456789abcdef'
             source.write_bytes(payload)
-            with patch('leech.downloader.subprocess.call', side_effect=AssertionError('external split')):
-                parts = split_file(source, 6)
+            parts = split_file(source, 6)
             self.assertEqual([Path(p).stat().st_size for p in parts], [6, 6, 4])
             self.assertEqual(b''.join(Path(p).read_bytes() for p in parts), payload)
             self.assertFalse(source.exists())

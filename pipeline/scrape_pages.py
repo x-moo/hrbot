@@ -28,7 +28,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from pipeline.common import MEDIA_RE, classify, host_of, ext_of  # noqa: E402
+from pipeline.common import extract_media, host_of, ext_of  # noqa: E402
 
 
 def fetch_page(url, timeout=60, tries=3, ua=True):
@@ -60,15 +60,6 @@ def fetch_page(url, timeout=60, tries=3, ua=True):
             os.remove(tmp)
         except OSError:
             pass
-
-
-def media_of(body):
-    """(audio, video) lists from a decoded page body."""
-    a, v = [], []
-    sa, sv = set(), set()
-    for m in MEDIA_RE.findall(body):
-        classify(m.rstrip('.,;"'), a, v, sa, sv)
-    return a, v
 
 
 def list_rows(path):
@@ -103,7 +94,7 @@ def cmd_probe(args):
     for u in sample:
         code, body = fetch_page(u, tries=1)
         codes[code] += 1
-        media = sum(media_of(body), [])
+        media = sum(extract_media(body), [])
         if not media and code == "200":
             zero += 1
         for m in media:
@@ -126,7 +117,7 @@ def cmd_sweep(args):
 
     def one(url):
         code, body = fetch_page(url, tries=3)
-        return url, code, sum(media_of(body), [])
+        return url, code, sum(extract_media(body), [])
 
     codes, rows, with_media = collections.Counter(), 0, 0
     with cf.ThreadPoolExecutor(max_workers=args.jobs) as ex:
@@ -151,7 +142,7 @@ def cmd_residue(args):
     empty, unfetchable, found = [], [], []
     for i, u in enumerate(todo, 1):
         code, body = fetch_page(u, tries=3)
-        media = sum(media_of(body), [])
+        media = sum(extract_media(body), [])
         if code != "200":
             unfetchable.append(u)
         elif media:
@@ -174,7 +165,7 @@ def cmd_residue(args):
 
 def cmd_one(args):
     code, body = fetch_page(args.url, tries=1)
-    a, v = media_of(body)
+    a, v = extract_media(body)
     print(f"code: {code}")
     for m in a:
         print(f"  [audio] {m}")

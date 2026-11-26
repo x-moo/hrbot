@@ -81,6 +81,6 @@ class DownloadSafetyTests(unittest.TestCase):
         response.close.assert_called()
 
     def test_default_backend_is_bounded(self):
-        with patch.object(d, 'download_python', return_value=[]) as backend, patch.object(d, 'aria2c_path', return_value='/bin/aria2c'):
-            d.download('http://example/file', self.directory, 'file', [], 2)
+        with patch.object(d, 'download_python', return_value=[]) as backend:
+            d.download('http://example/file', self.directory, 'file', [])
         backend.assert_called_once()

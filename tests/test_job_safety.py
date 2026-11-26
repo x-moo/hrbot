@@ -1,7 +1,7 @@
 """Resource and cleanup regressions for background downloads."""
 import threading
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 import tempfile
 from pathlib import Path
 from bot import app

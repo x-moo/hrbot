@@ -44,7 +44,6 @@ class Job:
     thumb: str | None = None
     as_doc: bool = False
     to_self: bool = False
-    future: Any = field(default=None, repr=False)
     last_edit: float = float('-inf')
     last_text: str | None = None
     finalized: bool = False

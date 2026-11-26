@@ -7,7 +7,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from bot import update
-from bot.scheduler import start_daily_worker
 
 CACHE = Path(__file__).resolve().parents[1] / '.cache'
 CACHE.mkdir(exist_ok=True)

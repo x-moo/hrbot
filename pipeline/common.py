@@ -24,7 +24,6 @@ MEDIA_RE = re.compile(
 )
 
 YMD_RE = re.compile(r"(\d{4})/(\d{2})/")
-DEFAULT_SITE = "http://www.haramain.info"
 EXCLUDED_DOMAINS = ("youtube.com", "youtube-nocookie.com", "youtu.be", "ytimg.com",
                     "google.com", "googlevideo.com", "googleusercontent.com",
                     "googleapis.com", "gstatic.com", "ggpht.com")

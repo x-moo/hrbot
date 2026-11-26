@@ -104,7 +104,6 @@ def _configure_menu(token, **options):
 
 
 HERE = Path(__file__).resolve().parents[1]
-DEFAULT_DB = HERE / "archive.db"
 VIEW_TTL = 900  # seconds a result message's buttons keep working
 _LEECH_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="leech")
 # Metadata requests use a separate bounded worker, never the polling thread.
@@ -184,18 +183,6 @@ def fmt_count(n):
     if n < 10000:
         return f"{n / 1000:.1f}k".replace(".0k", "k")
     return f"{n // 1000}k"
-
-
-def fmt_item(r):
-    if r["year"] and r["month"]:
-        date = f"{r['year']:04d}-{r['month']:02d}"
-        if r["day"]:
-            date += f"-{r['day']:02d}"
-    else:  # rare: no parsed /YYYY/MM/ post path
-        date = str(r["year"]) if r["year"] else "?"
-    name = r["fname"] or r["slug"] or "?"
-    icon = "\U0001f3a5" if (r["kind"] or "").startswith("video") else "\U0001f3a7"
-    return f"{icon} [{name}]({r['url']})\n   `{date}` · [source]({r['post']})"
 
 
 # --- paged result views (Next/Back inline buttons) ----------------------------
@@ -393,7 +380,7 @@ def _send_view(token, chat, spec, page, db, edit_of=None):
 
 
 def _screen_menu(db):
-    (total, uniq, y0, y1), _ = db.stats()
+    (_, uniq, y0, y1), _ = db.stats()
     head = f"{uniq:,} unique URLs" + (f" · {y0}–{y1}" if y0 else "")
     return (
         "Assalamu'alaikum 🕌 *haramain.info* media archive\n"
@@ -420,7 +407,7 @@ def _screen_language():
     )
 
 
-def _screen_help(db):
+def _screen_help():
     return help_text(), _mk([[HOME]])
 
 
@@ -448,7 +435,7 @@ def _screen_latest(db, n=5):
     return text, _mk([*_download_rows(rows, current_chat.get()), [HOME]])
 
 
-def _screen_search(db):
+def _screen_search():
     return (
         "🔎 *Search*\n\n"
         "Kirim: `/search <kata>` — mis. `/search sudais fajr`\n"
@@ -457,7 +444,7 @@ def _screen_search(db):
     )
 
 
-def _screen_date(db):
+def _screen_date():
     return (
         "📅 *By date*\n\n"
         "Kirim: `/date YYYY-MM-DD` — mis. `/date 2026-10-28`\n"
@@ -472,7 +459,7 @@ def _screen_years(db):
         return "Archive is empty — import first: `python3 import_dump.py`", _mk(
             [[HOME]]
         )
-    (_, uniq, _, _), _kind = db.stats()
+    (_, uniq, _, _), _ = db.stats()
     text = (
         f"🗓 *Year*\n\n{uniq:,} URLs across {len(years)} years "
         f"({years[-1][0]}–{years[0][0]}).\nPilih tahun:"
@@ -517,15 +504,15 @@ def _handle_callback(cb, db, token):
         if data == "c:menu":
             return _screen_menu(db)
         if data == "c:help":
-            return _screen_help(db)
+            return _screen_help()
         if data == "c:stat":
             return _screen_stat(db)
         if data in ("c:latest", "c:latest:refresh"):
             return _screen_latest(db)
         if data == "c:search":
-            return _screen_search(db)
+            return _screen_search()
         if data == "c:date":
-            return _screen_date(db)
+            return _screen_date()
         if data == "c:years":
             return _screen_years(db)
         if data.startswith("c:y:"):
@@ -720,16 +707,6 @@ def _run_leech(job, url, chat, name, split_size, thumb, as_doc, to_self):
     )
 
 
-def _dl_text(job):
-    service = _download_service()
-    return service.text(service.adapt(job))
-
-
-def _dl_status(job):
-    service = _download_service()
-    return service.status(service.adapt(job))
-
-
 def _dl_finish(job):
     return _download_service().finish(job)
 
@@ -804,7 +781,7 @@ def _handle_update(upd, db, token):
                 code=language.get(),
                 private=msg.get("chat", {}).get("type") == "private",
             )
-        out = _screen_menu(db) if cmd == "/start" else _screen_help(db)
+        out = _screen_menu(db) if cmd == "/start" else _screen_help()
         _push(token, chat, out[0], out[1])
     elif cmd == "/latest":
         n = min(int(args[0]) if args and args[0].isdigit() else 5, 10)
@@ -813,7 +790,7 @@ def _handle_update(upd, db, token):
     elif cmd == "/date":
         m = re.match(r"(\d{4})-(\d{2})(?:-(\d{2}))?", args[0] if args else "")
         if not m:
-            out = _screen_date(db)
+            out = _screen_date()
             _push(token, chat, out[0], out[1])
             return
         spec = {
@@ -828,7 +805,7 @@ def _handle_update(upd, db, token):
         _send_view(token, chat, spec, 1, db)
     elif cmd == "/search":
         if not args:
-            out = _screen_search(db)
+            out = _screen_search()
             _push(token, chat, out[0], out[1])
             return
         spec = {"kind": "search", "terms": [a.lower() for a in args]}

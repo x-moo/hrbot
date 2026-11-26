@@ -1,9 +1,7 @@
-"""Optional aria2c downloads, Python streaming fallback and file splitting."""
+"""Bounded Python streaming downloads and file splitting."""
 import http.client
 import os
-import re
 import shutil
-import subprocess as subprocess  # Compatibility: legacy callers patch this namespace.
 import time
 import urllib.request
 from contextlib import contextmanager
@@ -82,27 +80,13 @@ def _limit(name, default):
         return max(1, int(os.environ.get(name, default)))
     except ValueError:
         return default
+
+
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
-# --- aria2c -------------------------------------------------------------------
-def aria2c_path():
-    """Find an optional installed binary; never install system packages."""
-    return shutil.which("aria2c")
 
-
-def progress_of(line):
-    """Safe one-liner from an aria2c line, or None. Never returns the raw line."""
-    m = re.search(r"(\d{1,3})%", line)
-    if m:
-        return f"downloading... {m.group(1)}%"
-    m = re.search(r"DL:([\d.]+\w+)(?:\s+ETA:(\S+))?", line)
-    if m:
-        return f"downloading at {m.group(1)}/s"
-    return None
-
-
-def download(url, out_dir, name, headers, jobs, on_line=None, *, untrusted=None):
+def download(url, out_dir, name, headers, on_line=None, *, untrusted=None):
     """Use the bounded Python backend for every download."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -161,7 +145,7 @@ def download_python(url, out_dir, name, headers, on_line=None, *, untrusted=None
     if not name or Path(name).name != name or name in ('.', '..'):
         raise RuntimeError('invalid download filename')
     if not url.lower().startswith(('http://', 'https://', 'ftp://')):
-        raise RuntimeError('Python supports HTTP, HTTPS and FTP URLs; magnet needs aria2c')
+        raise RuntimeError('only HTTP, HTTPS and FTP URLs are supported')
     if untrusted:
         validate_url(url)
     target = Path(out_dir) / name

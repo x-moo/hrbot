@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from bot.scheduler import next_daily_run, start_daily_worker
+from bot.scheduler import next_daily_run
 
 
 class DailyUpdateTests(unittest.TestCase):

@@ -9,16 +9,12 @@ your account — required for files above 2 GB.
 """
 import os
 import sys
-from pathlib import Path
 from config import load_env
 
 try:
     from pyrogram import Client
 except ImportError:                                        # noqa: BLE001
     sys.exit("pyrogram is missing. Install it: pip install kurigram tgcrypto")
-
-HERE = Path(__file__).resolve().parents[1]
-
 
 
 def main():

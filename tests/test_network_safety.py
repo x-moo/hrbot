@@ -156,9 +156,9 @@ class NetworkSafetyTests(unittest.TestCase):
             with d.untrusted_downloads():
                 with self.assertRaisesRegex(RuntimeError, 'destination'):
                     d.download('http://127.0.0.1/file', self.directory,
-                               'file', [], 2)
+                               'file', [])
         with patch.object(d, 'download_python', return_value=[]) as backend:
-            d.download('http://127.0.0.1/file', self.directory, 'file', [], 2)
+            d.download('http://127.0.0.1/file', self.directory, 'file', [])
         self.assertIsNone(backend.call_args.kwargs.get('untrusted'))
 
     def test_untrusted_rejects_ftp_and_url_credentials(self):
