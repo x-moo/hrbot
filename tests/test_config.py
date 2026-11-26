@@ -31,6 +31,6 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(keys, {
             "BOT_TOKEN", "DB_PATH", "POLL_SEC", "LONGPOLL_SEC",
             "POLL_BACKOFF_MAX_SEC", "DB_UPDATE_TIME", "DB_UPDATE_MAX_AGE_HOURS",
-            "DB_UPDATE_RETRY_SEC", "DB_UPDATE_TIMEOUT_SEC",
+            "DB_UPDATE_RETRY_SEC", "DB_UPDATE_TIMEOUT_SEC", "DB_UPDATE_PRUNE",
             "TELEGRAM_API", "TELEGRAM_HASH", "USER_SESSION_STRING",
         })

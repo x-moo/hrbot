@@ -66,7 +66,9 @@ is older than `DB_UPDATE_MAX_AGE_HOURS` (default 24; `0` disables startup catch-
 Failures retry after `DB_UPDATE_RETRY_SEC` (default 300 seconds) with exponential
 backoff capped at one hour. A shared `DB_UPDATE_TIMEOUT_SEC` (default 7200 seconds)
 bounds all refresh stages; timeout kills the process group and frees the lock.
-`SWEEP=1` includes the slower page scrape.
+`SWEEP=1` includes the slower page scrape. On storage-limited hosts,
+`DB_UPDATE_PRUNE=1` deletes the rebuildable `work/` and `haramain/` output after
+the import is committed and verified (failed refreshes keep everything).
 
 Every refresh logs stage start/completion and writes `.update-status.json`
 atomically. Inspect it without network access:

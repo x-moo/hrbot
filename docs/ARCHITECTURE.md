@@ -47,6 +47,7 @@ start.sh
                       ├─ flock(.update.lock)
                       ├─ sitemap → feed → [sweep] → build → import
                       ├─ batas waktu bersama; bunuh process group saat timeout
+                      ├─ [DB_UPDATE_PRUNE=1] hapus work/ dan haramain/ setelah verify
                       └─ .update-status.json: succeeded/failed + tahap
 ```
 

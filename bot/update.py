@@ -5,6 +5,7 @@ import fcntl
 import json
 import math
 import os
+import shutil
 import signal
 import sqlite3
 import subprocess
@@ -17,11 +18,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def db_path():
-    """The same database path the bot uses, resolved against the checkout."""
-    value = os.environ.get("DB_PATH") or os.environ.get("DB") or "archive.db"
+def _resolve(value):
+    """Relative pipeline paths are always anchored to the checkout root."""
     path = Path(value)
     return path if path.is_absolute() else ROOT / path
+
+
+def db_path():
+    """The same database path the bot uses, resolved against the checkout."""
+    return _resolve(os.environ.get("DB_PATH") or os.environ.get("DB") or "archive.db")
 
 
 def db_built_at(path=None):
@@ -189,15 +194,14 @@ def _perform_update(lock_fd):
     env = os.environ.copy()
 
     def absolute(value):
-        path = Path(value)
-        return str(path if path.is_absolute() else ROOT / path)
+        return str(_resolve(value))
 
     env["PYTHON"] = sys.executable
     env["PYTHONUNBUFFERED"] = "1"
-    env["DB"] = absolute(env.get("DB_PATH") or env.get("DB") or "archive.db")
-    env["DB_PATH"] = env["DB"]
-    env["DUMP"] = absolute(env.get("DUMP") or env.get("OUT") or "haramain")
-    env["OUT"] = env["DUMP"]
+    env["DB"] = env["DB_PATH"] = absolute(
+        env.get("DB_PATH") or env.get("DB") or "archive.db"
+    )
+    env["DUMP"] = env["OUT"] = absolute(env.get("DUMP") or env.get("OUT") or "haramain")
     env["WORK"] = absolute(env.get("WORK") or "work")
     timeout = float(env.get("DB_UPDATE_TIMEOUT_SEC", "7200"))
     if not math.isfinite(timeout) or timeout <= 0:
@@ -260,6 +264,109 @@ def _verify_database(path, import_started):
     return {"rows": count, "built": rows["built"]}
 
 
+# Directories that must never be pruned even if WORK/OUT point at them.
+_SOURCE_DIRS = (
+    "bot", "leech", "pipeline", "archive", "tests", "docs",
+    "deploy", "scripts", ".git", ".cache",
+)
+
+
+def _human_size(count):
+    for unit in ("B", "KB", "MB", "GB"):
+        if count < 1024 or unit == "GB":
+            return f"{count:.0f} {unit}" if unit == "B" else f"{count:.1f} {unit}"
+        count /= 1024
+    return f"{count:.1f} GB"
+
+
+def _tree_size(path):
+    total = 0
+    for base, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(base, name))
+            except OSError:
+                pass
+    return total
+
+
+def _label(path):
+    try:
+        return path.resolve().relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _prunable(path, protected):
+    """Only rebuildable output directories may be removed recursively."""
+    target = Path(path)
+    if target.is_symlink() or not target.is_dir():
+        return False
+    resolved = target.resolve()
+    root = ROOT.resolve()
+    if resolved == root or resolved in root.parents:
+        return False
+    if resolved.parent == root and resolved.name in _SOURCE_DIRS:
+        return False
+    for item in protected:
+        kept = Path(item).resolve()
+        if kept == resolved or resolved in kept.parents:
+            return False
+    return True
+
+
+def _stale_swaps(dump):
+    """Backup directories left behind by a dump swap that was interrupted."""
+    try:
+        entries = list(dump.parent.glob(f".{dump.name}.old-*"))
+    except OSError:
+        return []
+    return [entry for entry in entries if not entry.is_symlink() and entry.is_dir()]
+
+
+def prune_pipeline_artifacts(logger=print):
+    """Delete rebuildable pipeline output after a committed import.
+
+    Opt-in through DB_UPDATE_PRUNE=1. Runs only after the database import was
+    committed and verified, and never raises: the refresh has already
+    succeeded, so a failed cleanup must stay cosmetic.
+    """
+    if os.environ.get("DB_UPDATE_PRUNE") != "1":
+        return ()
+    protected = [
+        db_path(),
+        _resolve(os.environ.get("DOWNLOAD_DIR") or "downloads"),
+    ]
+    dump = _resolve(os.environ.get("DUMP") or os.environ.get("OUT") or "haramain")
+    candidates = (
+        os.environ.get("WORK") or "work",
+        dump,
+        *_stale_swaps(dump),
+    )
+    removed = []
+    seen = set()
+    for value in candidates:
+        path = _resolve(value)
+        key = str(path.resolve()) if path.exists() else str(path)
+        if key in seen:  # WORK and DUMP may point at the same directory
+            continue
+        seen.add(key)
+        label = _label(path)
+        try:
+            if not path.exists():
+                continue
+            if not _prunable(path, protected):
+                logger(f"[update] prune: kept {label} (not rebuildable output)")
+                continue
+            size = _tree_size(path)
+            shutil.rmtree(path)
+            removed.append(str(path))
+            logger(f"[update] prune: removed {label} ({_human_size(size)})")
+        except Exception as exc:  # noqa: BLE001 - never fail a successful update
+            logger(f"[update] prune: could not remove {label} ({type(exc).__name__})")
+    return tuple(removed)
+
+
 def run_update():
     """Refresh with a cross-process lock and durable success/failure diagnostics."""
     from config import load_env
@@ -282,6 +389,9 @@ def run_update():
             print(f"[update] failed: {type(exc).__name__}", flush=True)
             raise
         else:
+            # Opt-in storage relief: only after the import is committed and
+            # verified, so a failed refresh still keeps every artifact.
+            prune_pipeline_artifacts()
             finished = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
             _write_status(
                 "succeeded",

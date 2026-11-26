@@ -23,6 +23,7 @@ DB_UPDATE_TIME=03:00
 DB_UPDATE_MAX_AGE_HOURS=24
 DB_UPDATE_RETRY_SEC=300
 DB_UPDATE_TIMEOUT_SEC=7200
+DB_UPDATE_PRUNE=0
 ```
 
 `DB_UPDATE_TIME` memakai **UTC**. Jika variabel tidak ada, default kode adalah
@@ -72,6 +73,12 @@ python3 -m bot.update
 - Jangan simpan `WORK`, `OUT`/`DUMP`, atau `DB_PATH` dalam direktori yang saling
   menimpa. `OUT` harus direktori dump khusus.
 - Jangan hapus `archive.db`, `work/`, atau `haramain/` saat proses update berjalan.
+- `DB_UPDATE_PRUNE=1` menghapus `work/` dan `haramain/` otomatis **setelah** import
+  ter-commit dan terverifikasi. Default mati. Ini hemat ~200 MB untuk storage 1 GB,
+  dengan konsekuensi refresh berikutnya mengambil ulang semuanya dari jaringan
+  (bukan dari cache) dan `run.sh build/check` tidak bisa dijalankan tanpa fetch
+  ulang. Kegagalan prune tidak pernah menggagalkan update, dan database serta
+  `downloads/` tidak pernah tersentuh.
 - `SWEEP` default mati; aktifkan hanya jika memang membutuhkan scrape lambat.
 - Cache feed, staging dump, SQLite WAL dan file unduhan butuh ruang bersamaan.
   Monitor storage; backup data penting sebelum mengganti source/reinstall.
