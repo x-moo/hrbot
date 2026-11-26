@@ -1,6 +1,6 @@
 # Haramain tools
 
-Harvest media links from haramain.info, import the catalog into SQLite, and serve it through a Telegram bot. The optional leech tool streams bounded downloads in Python and uploads them over MTProto.
+Harvest media links from haramain.info, import the catalog into SQLite, and serve it through a Telegram bot. The optional leech tool streams bounded downloads in Python and uploads them over MTProto. YouTube links found in a post are kept as reference-only buttons in the detail view — they are never downloaded or proxied.
 
 ## Repository layout
 

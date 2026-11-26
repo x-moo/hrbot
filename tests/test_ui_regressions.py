@@ -36,10 +36,12 @@ class UIRegressions(unittest.TestCase):
         def api(token, method, payload, **kwargs):
             calls.append((method, payload))
             return {'message_id': 1}
+        db = Mock()
+        db.videos_for.return_value = []
         try:
             with patch.object(app, 'tg_call', api):
                 app._handle_callback({'id': 'cb', 'data': 'item:' + key,
-                    'message': {'message_id': 1, 'chat': {'id': 7}}}, Mock(), 'test')
+                    'message': {'message_id': 1, 'chat': {'id': 7}}}, db, 'test')
             payload = calls[-1][1]
             self.assertEqual(payload['text'], name)
             self.assertNotIn('parse_mode', payload)

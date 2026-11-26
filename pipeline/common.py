@@ -24,6 +24,19 @@ MEDIA_RE = re.compile(
 )
 
 YMD_RE = re.compile(r"(\d{4})/(\d{2})/")
+
+# YouTube references are kept as links only: they are never downloadable media,
+# so they live in their own table instead of the media catalog.
+YOUTUBE_RE = re.compile(
+    r"https?://(?:www\.|m\.|music\.)?"
+    r"(?:youtube\.com/(?:watch\?v=|embed/|shorts/|v/|live/)"
+    r"|youtube-nocookie\.com/embed/"
+    r"|youtu\.be/)"
+    r"([A-Za-z0-9_-]{11})(?![\w-])",
+    re.I,
+)
+YOUTUBE_URL = "https://www.youtube.com/watch?v={}"
+
 EXCLUDED_DOMAINS = ("youtube.com", "youtube-nocookie.com", "youtu.be", "ytimg.com",
                     "google.com", "googlevideo.com", "googleusercontent.com",
                     "googleapis.com", "gstatic.com", "ggpht.com")
@@ -128,6 +141,16 @@ def extract_media(body_html):
     for m in MEDIA_RE.findall(body_html):
         classify(m.rstrip('.,;"'), audio, video, seen_a, seen_v)
     return audio, video
+
+
+def extract_videos(body_html):
+    """Canonical YouTube URLs in a decoded HTML string (deduped, in order)."""
+    found, seen = [], set()
+    for video_id in YOUTUBE_RE.findall(body_html):
+        if video_id not in seen:
+            seen.add(video_id)
+            found.append(YOUTUBE_URL.format(video_id))
+    return found
 
 
 def read_lines(path):

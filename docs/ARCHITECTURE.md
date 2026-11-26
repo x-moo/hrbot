@@ -27,9 +27,11 @@
   stage logging dan status atomik.
 - `pipeline/`: harvest sitemap/RSS/page scrape → dump tervalidasi.
 - `archive/import_dump.py`: fungsi reusable `import_catalog()`; DELETE/INSERT,
-  indeks dan `meta.built` UTC dalam satu transaksi WAL.
+  indeks dan `meta.built` UTC dalam satu transaksi WAL. Tabel `media` untuk
+  unduhan, tabel `video` untuk referensi YouTube (hanya link, tidak diunduh).
 - `archive/repository.py`: query read-only; statistik di-cache berdasarkan
-  `PRAGMA data_version` dan invalidasi pada commit eksternal.
+  `PRAGMA data_version` dan invalidasi pada commit eksternal; `videos_for(post)`
+  mengembalikan link YouTube dan tetap aman pada dump lama tanpa tabel itu.
 
 ## Auto-update
 

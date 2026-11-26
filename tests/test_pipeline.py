@@ -20,7 +20,9 @@ class PipelineTests(unittest.TestCase):
             (work / 'posts.txt').write_text(post + '\n')
             (feeds / 'batch.xml').write_text(
                 '<rss><item><link>' + post + '</link><description>'
-                'https://media.example/fajr.mp3</description></item></rss>')
+                'https://media.example/fajr.mp3 '
+                '&lt;iframe src="https://www.youtube.com/embed/abcdefghijk"&gt;'
+                '</description></item></rss>')
             output = base / 'dump'
             result = subprocess.run(['bash', str(ROOT / 'scripts/run.sh'), 'build'],
                 cwd=base, env={**os.environ, 'WORK': str(work), 'OUT': str(output)},
@@ -28,6 +30,10 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual((output / 'index/all_audio_urls.txt').read_text(),
                              'https://media.example/fajr.mp3\n')
+            self.assertEqual(
+                (output / 'csv/videos.csv').read_text(),
+                'source_post,video_url\n'
+                f'"{post}","https://www.youtube.com/watch?v=abcdefghijk"\n')
 
 
 if __name__ == '__main__':

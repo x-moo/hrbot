@@ -39,7 +39,7 @@ class FeedRefreshTests(unittest.TestCase):
             (base / 'f_000001.xml').write_text(f'<rss>{item(post, "fresh")}</rss>')
             (base / '202611_p00001.xml').write_text(
                 f'<rss>{item(post, "old")}{item(month_only, "month-only")}</rss>')
-            seen, audio, _, _ = build_dump.parse_feed_files([base])
+            seen, audio, _, _, _ = build_dump.parse_feed_files([base])
             self.assertEqual(seen[post][0], 'fresh')
             self.assertEqual(audio[post], ['https://media.example/fresh.mp3'])
             self.assertEqual(audio[month_only], ['https://media.example/month-only.mp3'])

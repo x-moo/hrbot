@@ -11,6 +11,7 @@ class DetailTests(unittest.TestCase):
                'year': 2026, 'month': 11, 'day': 16, 'kind': 'audio'}
         db = Mock()
         db.latest.return_value = [row]
+        db.videos_for.return_value = ['https://www.youtube.com/watch?v=abcdefghijk']
         context = app.current_chat.set(7)
         calls = []
         def api(token, method, payload, **kwargs):
@@ -31,6 +32,8 @@ class DetailTests(unittest.TestCase):
                 detail = calls[-1][1]
                 buttons = [b for r in detail['reply_markup']['inline_keyboard'] for b in r]
                 self.assertEqual(next(b['url'] for b in buttons if 'url' in b), row['post'])
+                self.assertIn('https://www.youtube.com/watch?v=abcdefghijk',
+                              [b['url'] for b in buttons if 'url' in b])
                 self.assertTrue(any(b.get('callback_data', '').startswith('get:') for b in buttons))
                 tap(next(b['callback_data'] for b in buttons if b.get('callback_data', '').startswith('list:')))
                 self.assertEqual(calls[-1][1]['text'], app.translate(text))

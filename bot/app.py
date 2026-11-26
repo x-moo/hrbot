@@ -567,6 +567,10 @@ def _handle_callback(cb, db, token):
         buttons = []
         if record.get("post", "").lower().startswith(("http://", "https://")):
             buttons.append({"text": "🔗 Source", "url": record["post"]})
+        videos = db.videos_for(record.get("post", "")) if record.get("post") else []
+        for index, url in enumerate(videos[:2], 1):
+            label = "▶️ YouTube" if len(videos) == 1 else f"▶️ YouTube {index}"
+            buttons.append({"text": label, "url": url})
         buttons.append({"text": "⬇️ Download", "callback_data": "get:" + key})
         markup = _mk([buttons, [{"text": "⬅️ Back", "callback_data": "list:" + key}]])
         name = record.get("fname") or record.get("slug") or "Recording"

@@ -44,6 +44,23 @@ def fname_of(url):
     return path.rsplit("/", 1)[-1].lower()
 
 
+def collect_videos(dump_dir):
+    """Yield (post, url) YouTube references; optional for older dumps."""
+    videos = os.path.join(dump_dir, "csv", "videos.csv")
+    if not os.path.exists(videos):
+        return
+    with open(videos, newline="", encoding="utf-8", errors="ignore") as f:
+        for row in csv.reader(f):
+            # header: source_post,video_url
+            if len(row) < 2:
+                continue
+            post, url = row[0].strip(), row[1].strip()
+            if post.startswith(("http://", "https://")) and url.startswith(
+                "https://www.youtube.com/watch?v="
+            ):
+                yield post, url
+
+
 def collect_rows(dump_dir):
     """Yield (url, post, kind) from catalog.csv, or per-year TSVs as fallback."""
     catalog = os.path.join(dump_dir, "csv", "catalog.csv")
@@ -109,6 +126,14 @@ def import_catalog(dump_dir, database):
                     f"CREATE INDEX IF NOT EXISTS idx_media_{name} ON media({columns})"
                 )
             db.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)")
+            # YouTube references live apart from media: they are never offered
+            # for download, only as source buttons in the detail view.
+            db.execute("""CREATE TABLE IF NOT EXISTS video (
+                post TEXT NOT NULL, url TEXT NOT NULL, PRIMARY KEY (post, url))""")
+            db.execute("DELETE FROM video")
+            videos = list(dict.fromkeys(collect_videos(dump_dir)))
+            if videos:
+                db.executemany("INSERT OR IGNORE INTO video VALUES (?,?)", videos)
             built = datetime.datetime.now(datetime.timezone.utc).isoformat(
                 timespec="seconds"
             )
@@ -123,7 +148,7 @@ def import_catalog(dump_dir, database):
             raise
         # Do not force WAL truncation while other read transactions are active.
         db.execute("PRAGMA wal_checkpoint(PASSIVE)")
-    return {"rows": count, "unique_urls": unique, "built": built}
+    return {"rows": count, "unique_urls": unique, "videos": len(videos), "built": built}
 
 
 def main():
@@ -138,7 +163,8 @@ def main():
     except (ValueError, OSError, sqlite3.Error) as exc:
         parser.exit(1, f"import failed: {exc}\n")
     print(
-        f"import done: {result['rows']} rows ({result['unique_urls']} unique urls) -> {args.db}",
+        f"import done: {result['rows']} rows ({result['unique_urls']} unique urls,"
+        f" {result['videos']} youtube links) -> {args.db}",
         flush=True,
     )
 

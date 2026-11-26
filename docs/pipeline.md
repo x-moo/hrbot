@@ -15,7 +15,7 @@ Blogger archive (built for haramain.info, works for any Blogger site).
 | 6 | `by_label.py` | sidebar menu categories -> per-label folders | `menu` -> `show` -> `dump "<group>"` -> `summary` |
 | — | `dump_all_groups.sh` | dump every group from menu.json | `./dump_all_groups.sh` |
 | — | `run.sh` | runs every stage | `./run.sh [sitemap|feed|scrape|sweep|build|check|all]` |
-| — | `common.py` | shared: media regexes, host exclusions, `classify()`, `unglue()` | imported by all |
+| — | `common.py` | shared: media regexes, host exclusions, `classify()`, `unglue()`, `extract_videos()` | imported by all |
 
 ## The order matters
 
@@ -37,6 +37,9 @@ sitemap  →  feed  →  reconcile  →  page-sweep  →  build  →  verify
 5. **Build with assertions, never hand-filtered afterwards.** Excluded
    hosts (youtube/google), glued two-href URLs, and malformed URLs are all
    asserted at build time — the script refuses to finish if any leak.
+   YouTube links are the one exception kept on purpose: they are recorded as
+   references in `csv/videos.csv` (`source_post,video_url`) and never enter
+   the media catalog, because the bot only links to them.
 
 ## Conventions
 

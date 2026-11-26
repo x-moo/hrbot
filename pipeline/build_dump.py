@@ -29,8 +29,9 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from pipeline.common import (DISALLOWED, MEDIA_RE, classify, host_of,  # noqa: E402
-                             is_bad_host, read_lines, year_of)
+from pipeline.common import (DISALLOWED, MEDIA_RE, classify,  # noqa: E402
+                             extract_videos, host_of, is_bad_host,
+                             read_lines, year_of)
 
 ITEM_RE = re.compile(r"<item>(.*?)</item>", re.S)
 LINK_RE = re.compile(r"<link>(.*?)</link>", re.S)
@@ -40,9 +41,10 @@ MONTH_PAGE_RE = re.compile(r"[0-9]{6}_p[0-9]+\.xml")
 
 
 def parse_feed_files(dirs):
-    """-> (posts_seen, audio_by_post, video_by_post, items_scanned)."""
+    """-> (posts_seen, audio_by_post, video_by_post, youtube_by_post, items)."""
     posts_seen = {}
     audio, video = collections.defaultdict(list), collections.defaultdict(list)
+    youtube = collections.defaultdict(list)
     items = 0
     files = []
     for d in dirs:
@@ -73,7 +75,10 @@ def parse_feed_files(dirs):
             for u in MEDIA_RE.findall(dec):
                 classify(u.rstrip('.,;"'), audio[url], video[url],
                          set(audio[url]), set(video[url]))
-    return posts_seen, audio, video, items
+            for link in extract_videos(dec):
+                if link not in youtube[url]:
+                    youtube[url].append(link)
+    return posts_seen, audio, video, youtube, items
 
 
 def parse_page_tsv(path, audio, video):
@@ -112,7 +117,9 @@ def main():
     for feed_dir in args.feeds:
         if not os.path.isdir(feed_dir) or not glob.glob(os.path.join(feed_dir, "*.xml")):
             raise ValueError(f"feed directory missing or empty: {feed_dir}")
-    posts_seen, audio_by_post, video_by_post, items = parse_feed_files(args.feeds)
+    posts_seen, audio_by_post, video_by_post, youtube_by_post, items = parse_feed_files(
+        args.feeds
+    )
     scraped, scraped_new = parse_page_tsv(args.page_tsv, audio_by_post, video_by_post)
 
     print(f"sitemap posts        : {len(posts)}")
@@ -144,6 +151,12 @@ def main():
     # every post the archive has no media URL for — including posts the feed
     # served but that yielded nothing
     no_media = [p for p in posts if p not in with_media]
+
+    # YouTube links are references, not downloadable media: keep them beside
+    # the catalog so the bot can offer them as buttons.
+    youtube_rows = [(p, u) for p in posts if p in youtube_by_post
+                    for u in youtube_by_post[p]]
+    youtube_posts = {p for p, _ in youtube_rows}
 
     out = Path(os.path.abspath(args.out))
     protected = [Path.cwd(), Path(__file__), Path(args.posts),
@@ -188,6 +201,7 @@ def main():
         for name, data in (("all_posts.txt", posts),
                            ("all_audio_urls.txt", sorted(all_audio)),
                            ("all_video_urls.txt", sorted(all_video)),
+                           ("youtube_links.txt", [f"{u}\t{p}" for p, u in youtube_rows]),
                            ("posts_without_media.txt", no_media)):
             with open(os.path.join(idx, name), "w") as f:
                 f.write("\n".join(data) + ("\n" if data else ""))
@@ -206,6 +220,12 @@ def main():
                     for u, p in sorted(roll.get(y, [])):
                         f.write(f'{y},"{kind}","{u}","{host_of(u)}","{p}"\n')
 
+        # youtube references (imported into their own table, never downloadable)
+        with open(os.path.join(staging, "csv", "videos.csv"), "w") as f:
+            f.write("source_post,video_url\n")
+            for p, u in youtube_rows:
+                f.write(f'"{p}","{u}"\n')
+
         # README
         with open(os.path.join(staging, "README.md"), "w") as f:
             f.write(f"# {args.site.replace('http://', '').replace('https://', '')}"
@@ -220,13 +240,18 @@ def main():
             f.write(f"- Unique video URLs : {len(all_video)}\n")
             if years:
                 f.write(f"- Years covered : {years[0]}-{years[-1]}\n")
-            f.write("- YouTube/Google URLs : 0 (excluded, asserted at build time)\n\n")
+            f.write(f"- YouTube links (reference only) : {len(youtube_rows)}"
+                    f" across {len(youtube_posts)} posts\n")
+            f.write("- Google/YouTube URLs in the media catalog"
+                    " : 0 (excluded, asserted at build time)\n\n")
             f.write("## Layout\n```\n<out>/\n"
                     "├── years/<YYYY>/sources.txt | audio_urls.txt | video_urls.txt\n"
                     "│                 audio_with_source.tsv | video_with_source.tsv\n"
                     "├── index/all_posts.txt | all_audio_urls.txt | all_video_urls.txt\n"
                     "│       posts_without_media.txt | hosts.txt | video_hosts.txt\n"
-                    "└── csv/catalog.csv     # year,type,url,host,source_post\n```\n\n")
+                    "│       youtube_links.txt\n"
+                    "└── csv/catalog.csv     # year,type,url,host,source_post\n"
+                    "    csv/videos.csv      # source_post,video_url (reference only)\n```\n\n")
             f.write("## Per-year counts (posts / audio / video)\n\n")
             f.write("| year | posts | audio | video |\n|---|---:|---:|---:|\n")
             for y, np_, na, nv in stats:
@@ -240,6 +265,7 @@ def main():
         print(f"total video urls : {len(all_video)}")
         print(f"posts w/o media   : {len(no_media)}")
         print(f"catalog rows      : {len(all_audio) + len(all_video)}")
+        print(f"youtube links     : {len(youtube_rows)} ({len(youtube_posts)} posts)")
 
         # assertions (never by eye)
         leaked = [u for u in (all_audio | all_video) if is_bad_host(u)]

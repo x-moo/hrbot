@@ -66,6 +66,18 @@ class Archive:
             (n,),
         ).fetchall()
 
+    def videos_for(self, post):
+        """YouTube references for a post; empty when the dump predates them."""
+        if not post:
+            return []
+        try:
+            rows = self.db.execute(
+                "SELECT url FROM video WHERE post=? ORDER BY url", (post,)
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+        return [row[0] for row in rows]
+
     # --- paged variants: (rows, total) so a caller can show "page i/n" ---
     def by_date_page(self, y, m, d=None, page=1):
         where, args = "year=? AND month=?", [y, m]
