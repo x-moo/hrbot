@@ -36,6 +36,75 @@ class Preferences:
 
 # English, Indonesian. Original mixed-language screens are normalized first.
 PHRASES = [
+    ('Haramain media archive', 'Arsip media Haramain'),
+    ('More options are available in Telegram\'s command menu.',
+     'Perintah lainnya tersedia di menu perintah Telegram.'),
+    ('Choose your language.', 'Pilih bahasa yang ingin digunakan.'),
+    ('Language', 'Bahasa'),
+    ('For a full month:', 'Untuk satu bulan:'),
+    ('Use /start for the main menu. Other commands are available in Telegram\'s command menu.',
+     'Gunakan /start untuk menu utama. Perintah lainnya tersedia di menu perintah Telegram.'),
+    ('Browse the archive', 'Telusuri arsip'),
+    ('Quran recitations', 'Tilawah Al-Qur\'an'),
+    ('Downloads', 'Unduhan'),
+    ('Preferences', 'Pengaturan'),
+    ('search recordings', 'cari rekaman'),
+    ('recordings for a date', 'rekaman pada tanggal tertentu'),
+    ('browse years and months', 'telusuri tahun dan bulan'),
+    ('browse reciters and audio', 'telusuri imam dan rekaman audio'),
+    ('view downloads in this chat', 'lihat unduhan di chat ini'),
+    ('cancel a download', 'batalkan unduhan'),
+    ('choose language', 'pilih bahasa'),
+    ('open the main menu', 'buka menu utama'),
+    ('Select a recording, then tap Download to receive it in this chat.',
+     'Pilih rekaman, lalu tekan Unduh untuk menerima berkas di chat ini.'),
+    ('The archive is empty. Please try again later.',
+     'Arsip belum tersedia. Silakan coba lagi nanti.'),
+    ('No recordings found.', 'Tidak ada rekaman yang ditemukan.'),
+    ('Please enter a valid date.', 'Masukkan tanggal yang valid.'),
+    ('Search again', 'Cari lagi'),
+    ('All YouTube', 'Semua video YouTube'),
+    ('Open a video on YouTube.', 'Pilih video untuk membukanya di YouTube.'),
+    ('updated:', 'diperbarui:'),
+    ('Page {page}/{pages}', 'Halaman {page}/{pages}'),
+    ('result', 'hasil'), ('results', 'hasil'),
+    ('year', 'tahun'),
+    ('reciters', 'imam'),
+    ('Try again', 'Coba lagi'),
+    ('The reciter catalog is busy. Please try again shortly.',
+     'Katalog imam sedang sibuk. Silakan coba lagi sebentar.'),
+    ('Queued', 'Dalam antrean'),
+    ('Downloading', 'Mengunduh'),
+    ('Splitting files', 'Membagi berkas'),
+    ('Waiting to upload', 'Menunggu giliran unggah'),
+    ('Uploading', 'Mengunggah'),
+    ('Completed', 'Selesai'),
+    ('Failed', 'Gagal'),
+    ('Cancelled', 'Dibatalkan'),
+    ('Cancellation requested', 'Permintaan pembatalan diterima'),
+    ('Cancel', 'Batalkan'),
+    ('Status', 'Lihat status'),
+    ('No queued or active downloads.', 'Tidak ada unduhan dalam antrean atau sedang berjalan.'),
+    ('Download not found in this chat.', 'Unduhan tidak ditemukan di chat ini.'),
+    ('Usage: /{action} <id>', 'Gunakan: /{action} <id>'),
+    ('This chat already has 2 queued or active downloads.',
+     'Chat ini sudah memiliki 2 unduhan dalam antrean atau sedang berjalan.'),
+    ('Download failed. Please try again later.', 'Unduhan gagal. Coba lagi nanti.'),
+    ('Could not post download status. Please try again later.',
+     'Status unduhan tidak dapat dikirim. Coba lagi nanti.'),
+    ('Downloader unavailable. Please try again later.',
+     'Pengunduh tidak tersedia. Coba lagi nanti.'),
+    ('Downloaded {size} in {seconds}s', 'Terunduh {size} dalam {seconds} dtk'),
+    ('Downloaded {size}', 'Terunduh {size}'),
+    ('Splitting {size} into {part_size} parts', 'Membagi {size} menjadi bagian berukuran {part_size}'),
+    ('{count} parts ready', '{count} bagian siap'),
+    ('Sent', 'Terkirim'),
+    ('Temporary storage cleared', 'Penyimpanan sementara dibersihkan'),
+    ('Files sent: {count}', 'Berkas terkirim: {count}'),
+    ('Confirmed sent: {sent}/{total}', 'Terkonfirmasi terkirim: {sent}/{total}'),
+    ('Files kept on server: {files}', 'Berkas disimpan di server: {files}'),
+    ('Audio', 'Audio'), ('Video', 'Video'), ('Image', 'Gambar'), ('File', 'Berkas'),
+    ('Recording', 'Rekaman'),
     ('Quran reciters (command menu)', 'daftar imam Quran (menu perintah)'),
     ('Choose a reciter:', 'Pilih imam:'),
     ('No audio is available for this reciter yet.', 'Belum ada audio untuk imam ini.'),
@@ -66,7 +135,7 @@ PHRASES = [
      'Belum ada link YouTube untuk rekaman ini.'),
     ('🌐 Language', '🌐 Bahasa'),
     ('Choose a menu below, or use commands directly', 'Pilih menu di bawah, atau pakai perintah langsung'),
-    ('Search results show 5 per page — use ⬅️ Back / Next ➡️.', 'Hasil pencarian muncul 5 per halaman — tombol ⬅️ Back / Next ➡️.'),
+    ('Search results show 5 per page — use ⬅️ Back / Next ➡️.', 'Hasil pencarian tampil 5 per halaman — gunakan ⬅️ Kembali / Lanjut ➡️.'),
     ('Assalamu\'alaikum 🕌 *haramain.info* media archive bot.', 'Assalamu\'alaikum 🕌 bot arsip media *haramain.info*.'),
     ('Assalamu\'alaikum 🕌 *haramain.info* media archive', 'Assalamu\'alaikum 🕌 arsip media *haramain.info*'),
     ('Press /start for the button menu — all commands below', 'Tekan /start untuk menu tombol — semua perintah di bawah ini'),
@@ -79,7 +148,7 @@ PHRASES = [
     ('download a file', 'unduh file'),
     ('Long results show 5 per page with ⬅️ Back / Next ➡️ buttons.', 'Hasil panjang tampil 5 per halaman dengan tombol ⬅️ Back / Next ➡️.'),
     ('5 results per page; use Back/Next to browse.', 'Hasil 5 per halaman, geser pakai tombol Back/Next.'),
-    ('Or browse by month using 🗓 Year.', 'Atau telusuri per bulan lewat tombol 🗓 Year.'),
+    ('Or browse by month using 🗓 Year.', 'Atau telusuri per bulan lewat tombol 🗓 Tahun.'),
     ('Variants:', 'Varian:'),
     ('(no preview)', '(tanpa preview)'),
     ('(post to the leech channel).', '(post ke channel leech).'),
@@ -128,6 +197,9 @@ def translate(text):
     target = language.get()
     pairs = {}
     for en, id_ in PHRASES:
+        # Match words, leaving surrounding spaces in the source untouched.
+        # A trailing space followed by a digit is not a word boundary.
+        en, id_ = en.strip(), id_.strip()
         pairs[en] = en if target == 'en' else id_
         pairs[id_] = en if target == 'en' else id_
     pattern = re.compile('|'.join(r'(?<!\w)' + re.escape(key) + r'(?!\w)'
@@ -140,9 +212,17 @@ def translate(text):
 def localize_markup(markup):
     if not markup:
         return markup
+
+    def label(button):
+        data = button.get('callback_data', '')
+        # URL labels and record/reciter names are content, not UI copy. Static
+        # URL actions (such as Source) are localized when they are constructed.
+        if button.get('url') or data.startswith(('item:', 'im:r:')):
+            return button['text']
+        if data.startswith('get:') and ' · ' in button['text']:
+            return translate('⬇️ Download') + ' · ' + button['text'].split(' · ', 1)[1]
+        return translate(button['text'])
+
     return {**markup, 'inline_keyboard': [
-        [{**button, 'text': (translate('⬇️ Download') + ' · ' + button['text'].split(' · ', 1)[1]
-                            if button.get('callback_data', '').startswith('get:') and ' · ' in button['text']
-                            else button['text'] if button.get('callback_data', '').startswith('item:')
-                            else translate(button['text']))} for button in row]
+        [{**button, 'text': label(button)} for button in row]
         for row in markup['inline_keyboard']]}

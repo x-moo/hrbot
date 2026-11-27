@@ -24,19 +24,24 @@ when a key is set in both places.
 
 ## Commands
 
-## Commands — semuanya juga tombol
+`/start` membuka empat tombol dalam dua baris: **🆕 Terbaru**, **🔎 Cari**,
+**❓ Bantuan**, dan **🌐 Bahasa**. Perintah lainnya tersedia lewat menu perintah
+bawaan Telegram. Layar arsip dan katalog menyediakan **🏠 Menu**; layar detail
+juga punya **⬅️ Kembali** menuju daftar asal. Label mengikuti bahasa chat.
 
-`/start` mengirim satu menu tombol; setiap perintah bisa ditekan tanpa
-mengetik. Setiap layar punya baris `[ ⬅️ … ] [ 🔝 Menu ]` untuk naik lagi.
-
-| command | contoh | tombol | role |
-|---|---|---|---|
-| /start | /start | 🆕 🔎 📅 🗓 📊 ❓ | menu tombol + statistik singkat |
-| /latest [n] | /latest 3 | 🔝 Menu | n rekaman terbaru |
-| /search <words...> | /search sudais fajr | ⬅️ Back / 📄 / Next ➡️ | cari nama file |
-| /date YYYY-MM-DD | /date 2026-10-28 | ⬅️ Back / 📄 / Next ➡️ | media satu tanggal |
-| /year [yyyy] | /year 2024 | 🗓 tahun → 📅 bulan → halaman | telusuri per tahun/bulan |
-| /stat | /stat | 🔝 Menu | statistik arsip |
+| command | contoh | fungsi |
+|---|---|---|
+| /start | /start | menu utama + statistik singkat |
+| /latest [n] | /latest 3 | n rekaman terbaru |
+| /search <words...> | /search sudais fajr | cari nama file, lima hasil per halaman |
+| /date YYYY-MM-DD | /date 2026-10-28 | rekaman satu tanggal; YYYY-MM untuk satu bulan |
+| /year [yyyy] | /year 2024 | telusuri per tahun/bulan |
+| /stat | /stat | statistik arsip |
+| /imaams | /imaams | katalog imam dan audio IMAAMS |
+| /language | /language | pilih Indonesia atau English |
+| /status [id] | /status | lihat unduhan pada chat ini |
+| /cancel <id> | /cancel 12 | batalkan unduhan |
+| /help | /help | panduan perintah |
 
 ## Peta tombol
 
@@ -62,14 +67,15 @@ bertahan setelah restart dan impor ulang. Direktori repository harus writable.
 
 ```
 /start
- ├─ 🆕 Latest        → 5 terbaru
- ├─ 🔎 Search        → minta `/search <kata>`; hasil 5 per halaman
- ├─ 📅 By date       → minta `/date YYYY-MM-DD`
- ├─ 🗓 Year          → daftar tahun (jumlah URL per tahun)
- │     └─ 2026 → daftar bulan (jumlah per bulan)
- │           └─ Oct → item berhalaman 5-an + ⬅️ Months
- ├─ 📊 Stat          → total baris/URL, audio vs video, periode, waktu update
- └─ ❓ Help
+ ├─ 🆕 Terbaru  ── 🔎 Cari
+ └─ ❓ Bantuan  ── 🌐 Bahasa
+
+Menu perintah Telegram
+ ├─ /date     → tanggal atau bulan tertentu
+ ├─ /year     → tahun → bulan → rekaman berhalaman
+ ├─ /stat     → jumlah, jenis media, periode, dan waktu pembaruan
+ ├─ /imaams   → imam → audio berhalaman
+ └─ /status, /cancel, /help, /language, /latest, /search, /start
 ```
 
 - Paging: `PAGE_SIZE` = 5 per halaman. `⬅️ Back` / `Next ➡️` mengedit
@@ -95,8 +101,12 @@ bertahan setelah restart dan impor ulang. Direktori repository harus writable.
 perintah bawaan Telegram, **bukan tombol tambahan di layar `/start`**.
 Pilih imam → daftar audio, lima entri per halaman. Tombol judul membuka
 file asli di Archive.org. Tombol **⬇️ Unduh** di sampingnya mengunduh satu
-rekaman dan mengunggahnya ke chat Telegram yang sama. Tombol Kembali
-memulihkan halaman daftar imam sebelumnya.
+rekaman dan mengunggahnya ke chat Telegram yang sama. Judul ditampilkan satu
+kali pada tombol; label panjang diringkas tanpa mengubah judul atau URL aslinya.
+Tombol Daftar imam memulihkan halaman daftar imam sebelumnya, dan **🏠 Menu**
+tersedia pada setiap layar katalog. Jika katalog gagal dimuat, **🔄 Coba lagi**
+mencoba halaman audio yang sama. Respons metadata yang terlambat diabaikan
+setelah pengguna kembali ke daftar imam atau menu utama.
 
 Tombol unduh terikat ke chat asal dan berlaku 15 menit. Unduhan memakai
 antrean, batas, dan konfigurasi MTProto yang sama dengan unduhan dari hasil
@@ -119,8 +129,11 @@ Hasil terbaru, pencarian, tanggal, dan bulan menampilkan tombol nama rekaman,
 tanpa daftar teks tautan yang berulang. Klik nama rekaman untuk membuka
 detail: **🔗 Sumber** membuka halaman asal, **⬇️ Unduh** mengirim file ke chat
 yang sama, dan **⬅️ Kembali** memulihkan daftar serta halaman sebelumnya.
-Tidak perlu menyalin URL. Perintah `/dl` untuk URL bebas sudah dinonaktifkan
-dan dihapus dari menu serta daftar perintah Telegram.
+Unduh ditempatkan pada baris utama; tautan sumber/YouTube maksimal dua per
+baris. Daftar semua video YouTube dibuka pada pesan yang sama, dengan tombol
+Kembali ke detail sebelum kembali ke daftar rekaman. Tidak perlu menyalin URL.
+Perintah `/dl` untuk URL bebas sudah dinonaktifkan dan dihapus dari menu serta
+daftar perintah Telegram.
 
 Tombol hanya merujuk URL arsip yang ditampilkan, terikat pada chat asal,
 dan berlaku 15 menit. Setelah restart atau kedaluwarsa, buka hasil arsip
@@ -136,20 +149,24 @@ Upload membutuhkan TELEGRAM_API, TELEGRAM_HASH dan BOT_TOKEN/USER_SESSION_STRING
 Standalone `python3 leech.py <url>` tetap tersedia untuk operator server.
 
 Setiap job memiliki state queued/downloading/waiting_upload/uploading dan status
-terminal succeeded/failed/cancelled. Gunakan `/status` untuk antrean di chat ini,
-`/status <id>` untuk satu job, dan `/cancel <id>` atau tombol Cancel untuk
+terminal succeeded/failed/cancelled. Di UI, status ditulis sesuai bahasa chat,
+misalnya **Dalam antrean**, **Mengunduh**, **Membagi berkas**, **Menunggu giliran
+unggah**, dan **Mengunggah**. Gunakan `/status` untuk antrean di chat ini,
+`/status <id>` untuk satu job, dan `/cancel <id>` atau tombol Batalkan untuk
 membatalkan. ID hanya berlaku dalam chat pemilik job. Pembatalan aktif bersifat
 cooperative: koneksi/download/split/upload memeriksa cancel; operasi socket yang
 sedang menunggu tetap tunduk pada deadline. File yang pengirimannya belum
 terkonfirmasi tidak dihapus. Status diedit paling sering tiga detik sekali dan
 teks identik tidak dikirim ulang.
 
-Pesan status (yang bertombol Cancel/Status) dihapus setelah job selesai, jadi
+Pesan status (yang bertombol Batalkan/Lihat status) dihapus setelah job selesai, jadi
 tidak ada lagi teks "queued" duplikat. Yang tertinggal hanya satu kartu hasil:
 nama file, jenis, ukuran, host, dan label **🔗 Buka link langsung** yang membuka
 URL mp3/video penuh. URL lengkap tidak pernah dicetak sebagai teks biasa; ia
 hanya menjadi target tautan. Kartu hanya dikirim untuk job yang berhasil — job
-gagal atau dibatalkan tetap memakai ringkasan teks lama beserta alasannya.
+gagal atau dibatalkan memakai ringkasan singkat. Kegagalan menampilkan petunjuk
+untuk mencoba lagi; hasil parsial menyebut jumlah berkas yang terkonfirmasi
+terkirim dan nama berkas yang masih disimpan di server.
 
 ## Hosted / low-memory servers
 

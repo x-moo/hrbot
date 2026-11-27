@@ -1,6 +1,7 @@
 import os
 import tempfile
 import threading
+import unicodedata
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -20,6 +21,12 @@ class ImmediateExecutor:
 
 class ImaamsUiTests(unittest.TestCase):
     def setUp(self):
+        context = language.set('en')
+        self.addCleanup(language.reset, context)
+        for name in ('_DOWNLOADS', '_IMAAMS_GENERATIONS'):
+            patcher = patch.object(app, name, {})
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.catalog = Mock()
         self.catalog.files.return_value = [
             {'name': f'{i:03}.mp3', 'title': f'Surat {i}', 'track': f'{i}/114',
@@ -41,7 +48,11 @@ class ImaamsUiTests(unittest.TestCase):
         commands = [c['command'] for c in command_list('id')]
         self.assertEqual(commands.count('imaams'), 1)
         self.assertNotIn('reciter', commands)
-        self.assertNotIn('imaams', str(app.menu_markup()).lower())
+        rows = app.menu_markup()['inline_keyboard']
+        self.assertEqual([len(row) for row in rows], [2, 2])
+        self.assertEqual([[button['callback_data'] for button in row] for row in rows],
+                         [['c:latest', 'c:search'], ['c:help', 'c:language']])
+        self.assertNotIn('imaams', str(rows).lower())
 
     def test_imaams_command_shows_paginated_reciter_list(self):
         with patch.object(app, '_push') as push:
@@ -51,6 +62,7 @@ class ImaamsUiTests(unittest.TestCase):
         buttons = [b for row in markup['inline_keyboard'] for b in row]
         reciters = [b for b in buttons if b.get('callback_data', '').startswith('im:r:')]
         self.assertEqual(len(reciters), 5)
+        self.assertEqual(markup['inline_keyboard'][-1][-1]['callback_data'], 'c:menu')
         self.catalog.files.assert_not_called()
 
     def test_reciter_selection_shows_only_one_audio_page(self):
@@ -58,10 +70,15 @@ class ImaamsUiTests(unittest.TestCase):
              patch.object(app, 'tg_call', return_value=True), patch.object(app, '_push') as push:
             app._handle_callback(self.callback('im:r:0:1'), Mock(), 'token')
         _, _, text, markup = push.call_args.args
-        self.assertIn('Surat 1', text)
+        self.assertEqual(text,
+                         f"🎙 {app.imaams_ui.RECITERS[0]['name']}\n"
+                         '12 audio tracks · Page 1/3\n\nChoose a recording:')
+        self.assertNotIn('Surat', text)
         audio = [b for row in markup['inline_keyboard'] for b in row if b.get('url')]
-        self.assertEqual(len(audio), 5)
+        self.assertEqual([button['text'] for button in audio],
+                         [f'Surat {index}' for index in range(1, 6)])
         self.assertTrue(all(b['url'].startswith('https://archive.org/download/') for b in audio))
+        self.assertEqual(markup['inline_keyboard'][-1][-1]['callback_data'], 'c:menu')
 
     def test_track_download_queues_the_displayed_url_to_the_same_chat(self):
         with patch.object(app, '_DOWNLOADS', {}), \
@@ -138,9 +155,14 @@ class ImaamsUiTests(unittest.TestCase):
              patch.object(app, 'tg_call', return_value=True), patch.object(app, '_push') as push:
             app._handle_callback(self.callback('im:r:7:2'), Mock(), 'token')
         _, _, text, markup = push.call_args.args
-        self.assertIn('Surat 6', text)
-        self.assertNotIn('• Surat 1\n', text)
+        self.assertIn('12 audio tracks · Page 2/3', text)
+        self.assertNotIn('Surat', text)
+        audio = [button for row in markup['inline_keyboard'] for button in row
+                 if button.get('url')]
+        self.assertEqual([button['text'] for button in audio],
+                         [f'Surat {index}' for index in range(6, 11)])
         self.assertIn('im:rlist:2', str(markup))
+        self.assertEqual(markup['inline_keyboard'][-1][-1]['callback_data'], 'c:menu')
         with patch.object(app, 'tg_call', return_value=True), patch.object(app, '_push') as push:
             app._handle_callback(self.callback('im:rlist:2'), Mock(), 'token')
         self.assertIn('2/', push.call_args.args[2])
@@ -177,12 +199,46 @@ class ImaamsUiTests(unittest.TestCase):
         self.assertLess(len(push.call_args.args[2]), 4096)
         self.assertIn('https://archive.org/download/Test/001.mp3', str(push.call_args))
         self.assertTrue(push.call_args.kwargs['plain'])
+        label = push.call_args.args[3]['inline_keyboard'][0][0]['text']
+        self.assertLessEqual(len(label.encode('utf-16-le')) // 2, 60)
+        self.assertNotIn(' MB', label)
 
-    def test_network_error_offers_reciter_list_retry(self):
-        self.catalog.files.side_effect = OSError('offline')
+    def test_title_and_size_labels_are_single_line_and_utf16_bounded(self):
+        title = '\x00Latest\tMay\nDownload\r😀' * 100
+        self.catalog.files.return_value = [{'name': '001.mp3', 'title': title,
+            'size': 2 * 1024 * 1024, 'url': 'https://archive.org/download/Test/001.mp3'}]
         with patch.object(app, '_push') as push:
             app._send_imaams('token', 2, 'im:r:0:1', edit_of=4)
-        self.assertIn('im:rlist:1', str(push.call_args))
+        text, markup = push.call_args.args[2:4]
+        label = markup['inline_keyboard'][0][0]['text']
+        self.assertTrue(label.startswith('Latest May Download 😀'))
+        self.assertTrue(label.endswith(' · 2.0 MB'))
+        self.assertFalse(any(unicodedata.category(char) == 'Cc' for char in label))
+        self.assertLessEqual(len(label.encode('utf-16-le')) // 2, 60)
+        self.assertNotIn('Latest', text)
+
+    def test_empty_reciter_still_has_reciters_return_and_home(self):
+        self.catalog.files.return_value = []
+        with patch.object(app, '_push') as push:
+            app._send_imaams('token', 2, 'im:r:7:2', edit_of=4)
+        text, markup = push.call_args.args[2:4]
+        self.assertIn('0 audio tracks · Page 1/1', text)
+        self.assertIn('No audio is available', text)
+        self.assertFalse(any(button.get('url') for row in markup['inline_keyboard']
+                             for button in row))
+        self.assertEqual([button['callback_data'] for button in markup['inline_keyboard'][-1]],
+                         ['im:rlist:2', 'c:menu'])
+
+    def test_network_error_retries_original_audio_page_and_reciter_page(self):
+        self.catalog.files.side_effect = OSError('offline')
+        with patch.object(app, '_push') as push, \
+             patch.object(app.imaams_ui, 'unavailable', wraps=app.imaams_ui.unavailable) as unavailable:
+            app._send_imaams('token', 2, 'im:r:7:2', edit_of=4)
+        unavailable.assert_called_once_with('im:r:7:2')
+        self.assertIn('temporarily unavailable', push.call_args.args[2])
+        self.assertEqual([[button['callback_data'] for button in row]
+                          for row in push.call_args.args[3]['inline_keyboard']],
+                         [['im:r:7:2'], ['im:rlist:2', 'c:menu']])
 
     def test_queue_capacity_is_bounded_and_slots_are_released(self):
         pending = []
@@ -190,11 +246,16 @@ class ImaamsUiTests(unittest.TestCase):
         executor.submit.side_effect = lambda function, *args: pending.append((function, args))
         with patch.object(app, '_IMAAMS_EXECUTOR', executor), \
              patch.object(app, '_IMAAMS_SLOTS', threading.BoundedSemaphore(1)), \
-             patch.object(app, '_push') as push:
-            app._queue_imaams('token', 2, 'im:r:0:1', 4)
-            app._queue_imaams('token', 2, 'im:r:0:1', 4)
+             patch.object(app, '_push') as push, \
+             patch.object(app.imaams_ui, 'unavailable', wraps=app.imaams_ui.unavailable) as unavailable:
+            app._queue_imaams('token', 2, 'im:r:7:2', 4)
+            app._queue_imaams('token', 2, 'im:r:7:2', 4)
             self.assertEqual(len(pending), 1)
-            self.assertIn('im:rlist:1', str(push.call_args))
+            unavailable.assert_called_once_with('im:r:7:2', busy=True)
+            self.assertIn('busy', push.call_args.args[2])
+            self.assertEqual([[button['callback_data'] for button in row]
+                              for row in push.call_args.args[3]['inline_keyboard']],
+                             [['im:r:7:2'], ['im:rlist:2', 'c:menu']])
             function, args = pending.pop()
             function(*args)
             app._queue_imaams('token', 2, 'im:r:0:1', 4)
@@ -215,6 +276,24 @@ class ImaamsUiTests(unittest.TestCase):
         self.assertEqual(push.call_count, 1)
         self.assertIn('IMAAMS', push.call_args.args[2])
         self.assertNotIn('Sheikh Abdullah Quraafi', push.call_args.args[2])
+
+    def test_home_navigation_discards_pending_audio_page(self):
+        pending = []
+        executor = Mock()
+        executor.submit.side_effect = lambda function, *args: pending.append((function, args))
+        db = Mock()
+        db.stats.return_value = ((1, 1, 2026, 2026), {})
+        with patch.object(app, '_IMAAMS_EXECUTOR', executor), \
+             patch.object(app, 'tg_call', return_value=True), patch.object(app, '_push') as push:
+            app._handle_callback(self.callback('im:r:7:2'), db, 'token')
+            self.assertEqual(len(pending), 1)
+            app._handle_callback(self.callback('c:menu'), db, 'token')
+            self.assertEqual(push.call_count, 1)
+            self.assertIn('Haramain media archive', push.call_args.args[2])
+            self.assertEqual(push.call_args.kwargs['edit_of'], 4)
+            pending[0][0](*pending[0][1])
+            self.assertEqual(push.call_count, 1)
+        self.catalog.files.assert_not_called()
 
     def test_submit_failure_releases_queue_slot(self):
         executor = Mock()

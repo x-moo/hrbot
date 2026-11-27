@@ -8,6 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from bot.i18n import language
+
 
 class HeldExecutor:
     def __init__(self):
@@ -24,6 +26,8 @@ class HeldExecutor:
 
 class DownloadServiceTests(unittest.TestCase):
     def setUp(self):
+        context = language.set('id')
+        self.addCleanup(language.reset, context)
         self.module = importlib.import_module('bot.downloads')
         self.jobs = importlib.import_module('bot.jobs')
         self.registry = self.jobs.JobRegistry()
@@ -48,11 +52,11 @@ class DownloadServiceTests(unittest.TestCase):
         for chat in range(3):
             note, started = self.start(chat, f'https://example.org/{chat}')
             self.assertTrue(started)
-            self.assertIn('queued', note)
+            self.assertIn('Dalam antrean', note)
         self.assertEqual(self.registry.counts(), {'queued': 3})
         self.assertEqual(len(self.executor.tasks), 2)
         payload = self.api.call_args_list[0].args[2]
-        self.assertIn('queued', payload['text'])
+        self.assertIn('Dalam antrean', payload['text'])
         self.assertNotIn('parse_mode', payload)
         buttons = payload['reply_markup']['inline_keyboard'][0]
         self.assertEqual(buttons[0]['callback_data'], 'cancel:1')
@@ -112,7 +116,7 @@ class DownloadServiceTests(unittest.TestCase):
         self.api.side_effect = status_ack
         note, started = self.start()
         self.assertFalse(started)
-        self.assertIn('cancelled', note)
+        self.assertIn('Dibatalkan', note)
         self.assertFalse(self.service._pending)
         self.assertEqual(self.registry.counts(), {})
 
@@ -134,14 +138,16 @@ class DownloadServiceTests(unittest.TestCase):
         self.api.side_effect = RuntimeError('offline')
         note, started = self.start()
         self.assertFalse(started)
-        self.assertIn('cannot post status', note)
+        self.assertEqual(note, 'Status unduhan tidak dapat dikirim. Coba lagi nanti.')
+        self.assertEqual(self.registry.get(1, chat=7).error, 'RuntimeError')
+        self.assertNotIn('RuntimeError', note)
         self.assertEqual(self.registry.counts(), {})
 
     def test_executor_failure_releases_admission_and_allows_next_dispatch(self):
         self.executor.submit = Mock(side_effect=RuntimeError('shutdown'))
         note, started = self.start()
         self.assertFalse(started)
-        self.assertIn('unavailable', note)
+        self.assertEqual(note, 'Antrean unduhan tidak tersedia.')
         self.assertEqual(self.registry.counts(), {})
         self.assertEqual(self.service._workers, 0)
         self.assertIs(self.registry.get(1, chat=7).state, self.jobs.JobState.FAILED)
@@ -217,7 +223,9 @@ class DownloadServiceTests(unittest.TestCase):
         with patch.object(cli, 'run_leech_sync', side_effect=ValueError(message)):
             self.executor.run_next()
         notification = '\n'.join(self.notify.call_args.args[2])
-        self.assertIn('ValueError', notification)
+        self.assertIn('Unduhan gagal. Coba lagi nanti.', notification)
+        self.assertNotIn('ValueError', notification)
+        self.assertEqual(self.registry.get(1, chat=7).error, 'ValueError')
         for private in (secret, 'private.example', 'token=secret', '/srv/private'):
             self.assertNotIn(private, notification)
 
@@ -230,6 +238,10 @@ class DownloadServiceTests(unittest.TestCase):
         self.start()
         with patch.object(cli, 'run_leech_sync', side_effect=transfer):
             self.executor.run_next()
+        job = self.registry.get(1, chat=7)
+        self.assertNotIn(secret, '\n'.join(job.lines))
+        self.assertIn('<bot-token>', '\n'.join(job.lines))
+        self.assertNotIn(secret, self.service.text(job))
         self.assertNotIn(secret, '\n'.join(self.notify.call_args.args[2]))
 
     def test_retained_notification_shows_filenames_not_local_paths(self):
@@ -434,6 +446,8 @@ class DownloadServiceTests(unittest.TestCase):
 
 class DownloadWiringTests(unittest.TestCase):
     def setUp(self):
+        context = language.set('id')
+        self.addCleanup(language.reset, context)
         from bot import app
         self.app = app
         self.api = Mock(return_value={'message_id': 5})
@@ -463,19 +477,19 @@ class DownloadWiringTests(unittest.TestCase):
         with patch('time.sleep', side_effect=AssertionError('polling must not sleep')):
             self.tap('cancel:1')
         self.assertNotIn(1, self.app._DL_POOL)
-        self.assertIn('cancelled', self.api.call_args.args[2]['text'])
+        self.assertIn('Dibatalkan', self.api.call_args.args[2]['text'])
         self.assertEqual(self.api.call_args.kwargs['tries'], 0)
 
     def test_status_and_cancel_commands_report_only_this_chat(self):
         self.start()
         self.update('/status 1', chat=8)
-        self.assertIn('not found', self.api.call_args.args[2]['text'])
+        self.assertIn('tidak ditemukan', self.api.call_args.args[2]['text'])
         self.update('/status 1')
-        self.assertIn('queued', self.api.call_args.args[2]['text'])
+        self.assertIn('Dalam antrean', self.api.call_args.args[2]['text'])
         self.update('/cancel 1')
         self.assertNotIn(1, self.app._DL_POOL)
         self.update('/status 1')
-        self.assertIn('cancelled', self.api.call_args.args[2]['text'])
+        self.assertIn('Dibatalkan', self.api.call_args.args[2]['text'])
         for text in ('/cancel', '/cancel nonsense', '/status 1 extra', '/status'):
             self.update(text)
             self.assertNotIn('parse_mode', self.api.call_args.args[2])

@@ -88,12 +88,12 @@ def _send_one(token, chat, part, with_format):
         raise
 
 
-def send(token, chat, text):
-    """Send Markdown text, falling back to plain text if parsing fails."""
-    for part in chunk_text([translate(text)]):
+def send(token, chat, text, *, localize=True):
+    """Send Markdown text; prelocalized presenters may preserve literal data."""
+    for part in chunk_text([translate(text) if localize else text]):
         _send_one(token, chat, part, with_format=True)
 
 
-def send_long(token, chat, lines):
-    for part in chunk_text([translate(line) for line in lines]):
+def send_long(token, chat, lines, *, localize=True):
+    for part in chunk_text([translate(line) if localize else line for line in lines]):
         _send_one(token, chat, part, with_format=True)

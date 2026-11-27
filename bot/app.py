@@ -39,6 +39,7 @@ from config import load_env
 from bot.telegram import NO_PREVIEW, TgError, tg_call, send, send_long
 from bot.i18n import Preferences, language, translate, localize_markup
 from bot.commands import configure_menu
+from bot.ui import HOME, compact_text
 from bot.imaams import ImaamsCatalog
 from bot import imaams_ui
 from bot.update import refresh_if_stale, run_update
@@ -74,7 +75,8 @@ def _remember_downloads(rows, chat):
 def _download_rows(rows, chat):
     rows = list(rows)
     return [
-        [{"text": (row["fname"] or "file")[:60], "callback_data": "item:" + key}]
+        [{"text": compact_text(row["fname"], fallback=translate("Recording")),
+          "callback_data": "item:" + key}]
         for row, key in zip(rows, _remember_downloads(rows, chat))
         if key
     ]
@@ -145,7 +147,7 @@ def _send_imaams(token, chat, data, edit_of=None, generation=None):
         )
     except Exception as exc:
         print(f"imaams catalog error: {type(exc).__name__}", flush=True)
-        rendered = imaams_ui.unavailable()
+        rendered = imaams_ui.unavailable(data)
     if rendered is not None:
         if generation is not None and _imaams_generation(chat, edit_of) != generation:
             return
@@ -156,7 +158,7 @@ def _send_imaams(token, chat, data, edit_of=None, generation=None):
 def _queue_imaams(token, chat, data, edit_of):
     generation = _invalidate_imaams(chat, edit_of)
     if not _IMAAMS_SLOTS.acquire(blocking=False):
-        text, markup = imaams_ui.unavailable()
+        text, markup = imaams_ui.unavailable(data, busy=True)
         _push(token, chat, text, markup, edit_of=edit_of, plain=True)
         return
 
@@ -172,7 +174,7 @@ def _queue_imaams(token, chat, data, edit_of):
         _IMAAMS_EXECUTOR.submit(copy_context().run, work)
     except Exception:
         _IMAAMS_SLOTS.release()
-        text, markup = imaams_ui.unavailable()
+        text, markup = imaams_ui.unavailable(data)
         _push(token, chat, text, markup, edit_of=edit_of, plain=True)
 
 
@@ -230,11 +232,8 @@ def _grid(items, per_row=3, extra=()):
     return _mk([*rows, *extra])
 
 
-HOME = {"text": "🔝 Menu", "callback_data": "c:menu"}
-
-
 def menu_markup():
-    """The /start keyboard: every command as a button."""
+    """Keep /start focused on four actions; other commands use Telegram's menu."""
     return _mk(
         [
             [
@@ -293,7 +292,7 @@ def _render(spec, page, db):
             + " ".join(spec["terms"]).replace("`", "").replace("\\", "")[:300]
             + "`"
         )
-        back = [{"text": "⬅️ Menu", "callback_data": "c:menu"}]
+        back = [HOME]
         prev_data, next_data = f"v:{page - 1}", f"v:{page + 1}"
     elif kind == "month":  # a whole year-month window
         y, m = spec["y"], spec["m"]
@@ -319,7 +318,10 @@ def _render(spec, page, db):
         next_data = next_data.rsplit(":", 1)[0] + ":" + str(page + 1)
         rows, total = fetch(page)
 
-    text = f"{title}\n{total:,} result(s) · page {page}/{pages}"
+    result_word = "result" if total == 1 else "results"
+    text = f"{title}\n\n{total:,} {result_word} · page {page}/{pages}"
+    if not total:
+        text += "\n\nNo recordings found."
     return text, _pager_rows(
         page,
         pages,
@@ -383,23 +385,24 @@ def _screen_menu(db):
     (_, uniq, y0, y1), _ = db.stats()
     head = f"{uniq:,} unique URLs" + (f" · {y0}–{y1}" if y0 else "")
     return (
-        "Assalamu'alaikum 🕌 *haramain.info* media archive\n"
+        "🕌 *Haramain media archive*\n"
         f"{head}\n\n"
-        "Pilih menu di bawah, atau pakai perintah langsung\n"
-        "(/latest, /search, /date, /year, /stat, /language).\n"
-        "Hasil pencarian muncul 5 per halaman — tombol ⬅️ Back / Next ➡️.",
+        "Choose a menu below, or use commands directly.\n"
+        "More options are available in Telegram's command menu.",
         menu_markup(),
     )
 
 
 def _screen_language():
     return (
-        "🌐 Choose language / Pilih bahasa",
+        "🌐 *Language*\n\nChoose your language.",
         _mk(
             [
                 [
-                    {"text": "🇬🇧 English", "callback_data": "lang:en"},
-                    {"text": "🇮🇩 Indonesia", "callback_data": "lang:id"},
+                    {"text": "🇬🇧 English" + (" ✓" if language.get() == "en" else ""),
+                     "callback_data": "lang:en"},
+                    {"text": "🇮🇩 Indonesia" + (" ✓" if language.get() == "id" else ""),
+                     "callback_data": "lang:id"},
                 ],
                 [HOME],
             ]
@@ -430,10 +433,10 @@ def _screen_stat(db):
 
 def _screen_latest(db, n=5):
     rows = db.latest(n)
-    text = (
+    text = "🆕 Latest\n\n" + (
         "Choose a recording:"
         if rows
-        else "Archive is empty — import first: `python3 import_dump.py`"
+        else "The archive is empty. Please try again later."
     )
     return text, _mk([*_download_rows(rows, current_chat.get()), [HOME]])
 
@@ -441,17 +444,19 @@ def _screen_latest(db, n=5):
 def _screen_search():
     return (
         "🔎 *Search*\n\n"
-        "Kirim: `/search <kata>` — mis. `/search sudais fajr`\n"
-        "Hasil 5 per halaman, geser pakai tombol Back/Next.",
-        _mk([[{"text": "⬅️ Menu", "callback_data": "c:menu"}]]),
+        "Send: `/search sudais fajr`\n"
+        "Search results show 5 per page — use ⬅️ Back / Next ➡️.",
+        _mk([[HOME]]),
     )
 
 
 def _screen_date():
     return (
         "📅 *By date*\n\n"
-        "Kirim: `/date YYYY-MM-DD` — mis. `/date 2026-10-28`\n"
-        "Atau telusuri per bulan lewat tombol 🗓 Year.",
+        "Send: `/date YYYY-MM-DD`\n"
+        "e.g. `/date 2026-10-28`\n"
+        "For a full month: `/date YYYY-MM`\n\n"
+        "Or browse by month using 🗓 Year.",
         _mk([[{"text": "🗓 Year", "callback_data": "c:years"}, HOME]]),
     )
 
@@ -459,13 +464,12 @@ def _screen_date():
 def _screen_years(db):
     years = db.years()
     if not years:
-        return "Archive is empty — import first: `python3 import_dump.py`", _mk(
-            [[HOME]]
-        )
+        return "The archive is empty. Please try again later.", _mk([[HOME]])
     (_, uniq, _, _), _ = db.stats()
+    year_word = "year" if len(years) == 1 else "years"
     text = (
-        f"🗓 *Year*\n\n{uniq:,} URLs across {len(years)} years "
-        f"({years[-1][0]}–{years[0][0]}).\nPilih tahun:"
+        f"🗓 *Year*\n\n{uniq:,} URLs across {len(years)} {year_word} "
+        f"({years[-1][0]}–{years[0][0]}).\nChoose a year:"
     )
     return text, years_markup(db)
 
@@ -481,7 +485,7 @@ def _screen_year(db, y):
         for k, c in sorted(db.year_stats(y), key=lambda row: row[0] or "")
     )
     total = sum(n for _, n in months)
-    return (f"🗓 *{y}* — {total:,} URLs\n{per}\nPilih bulan:", months_markup(db, y))
+    return (f"🗓 *{y}* — {total:,} URLs\n{per}\nChoose a month:", months_markup(db, y))
 
 
 def _handle_callback(cb, db, token):
@@ -552,7 +556,7 @@ def _handle_callback(cb, db, token):
             _send_imaams(token, chat, data, edit_of=message_id)
         return
 
-    if data.startswith(("item:", "list:")):
+    if data.startswith(("item:", "detail:", "list:")):
         key = data.split(":", 1)[1]
         with _DOWNLOAD_LOCK:
             item = _DOWNLOADS.get(key)
@@ -567,20 +571,24 @@ def _handle_callback(cb, db, token):
                 _push(token, chat, *parent, edit_of=message_id)
             return
         record = item["row"]
-        buttons = []
+        links = []
         if record.get("post", "").lower().startswith(("http://", "https://")):
-            buttons.append({"text": "🔗 Source", "url": record["post"]})
+            links.append({"text": translate("🔗 Source"), "url": record["post"]})
         videos = db.videos_for(record.get("post", "")) if record.get("post") else []
         for index, url in enumerate(videos[:2], 1):
             label = "▶️ YouTube" if len(videos) == 1 else f"▶️ YouTube {index}"
-            buttons.append({"text": label, "url": url})
+            links.append({"text": label, "url": url})
+        rows = [[{"text": "⬇️ Download", "callback_data": "get:" + key}]]
+        rows.extend(links[index:index + 2] for index in range(0, len(links), 2))
         if len(videos) > 2:
-            buttons.append({"text": f"▶️ All YouTube ({len(videos)})",
-                            "callback_data": "yt:" + key})
-        buttons.append({"text": "⬇️ Download", "callback_data": "get:" + key})
-        markup = _mk([buttons, [{"text": "⬅️ Back", "callback_data": "list:" + key}]])
-        name = record.get("fname") or record.get("slug") or "Recording"
-        _push(token, chat, name, markup, edit_of=message_id, plain=True)
+            rows.append([{"text": f"▶️ All YouTube ({len(videos)})",
+                          "callback_data": "yt:" + key}])
+        back = ([{"text": "⬅️ Back", "callback_data": "list:" + key}]
+                if item.get("parent") else [])
+        rows.append([*back, HOME])
+        name = compact_text(record.get("fname") or record.get("slug"), limit=2000,
+                            fallback=translate("Recording"))
+        _push(token, chat, name, _mk(rows), edit_of=message_id, plain=True)
         return
 
     if data.startswith("yt:"):
@@ -594,15 +602,12 @@ def _handle_callback(cb, db, token):
         answer()
         record = item["row"]
         videos = db.videos_for(record.get("post", "")) if record.get("post") else []
-        if not videos:
-            send(token, chat, translate("No YouTube links for this recording."))
-            return
-        _push(
-            token, chat, f"▶️ YouTube ({len(videos)})",
-            _mk([[{"text": f"▶️ YouTube {index}", "url": url}]
-                 for index, url in enumerate(videos, 1)]),
-            plain=True,
-        )
+        text = (f"▶️ YouTube · {len(videos)}\n\n" + translate("Open a video on YouTube.")
+                if videos else translate("No YouTube links for this recording."))
+        rows = [[{"text": f"▶️ YouTube {index}", "url": url}]
+                for index, url in enumerate(videos, 1)]
+        rows.append([{"text": "⬅️ Back", "callback_data": "detail:" + key}, HOME])
+        _push(token, chat, text, _mk(rows), edit_of=message_id, plain=True)
         return
 
     if data.startswith("get:"):
@@ -646,6 +651,9 @@ def _handle_callback(cb, db, token):
         return
 
     if data.startswith("c:"):
+        if data == "c:menu":
+            # A slow reciter request must not overwrite the menu after leaving it.
+            _invalidate_imaams(chat, message_id)
         if data == "c:x":  # the page-counter button
             answer()
             return
@@ -690,7 +698,7 @@ def _handle_callback(cb, db, token):
         return
 
     if spec is None:
-        answer("Hasil sudah kadaluarsa — jalankan perintah lagi.", alert=True)
+        answer("Results have expired — run the command again.", alert=True)
         return
     answer()
     try:
@@ -716,9 +724,9 @@ def _download_service():
             executor=lambda: _LEECH_EXECUTOR,
             api=lambda *args, **kwargs: tg_call(*args, **kwargs),
             notify=lambda token, chat, lines: send_long(
-                token, chat, [escape_markdown(line) for line in lines]
+                token, chat, [escape_markdown(line) for line in lines], localize=False
             ),
-            card=lambda token, chat, text: send(token, chat, text),
+            card=lambda token, chat, text: send(token, chat, text, localize=False),
             root=lambda: HERE,
         )
     return _DOWNLOAD_SERVICE
@@ -753,20 +761,26 @@ def start_leech(token, chat, url, name, split_size, thumb, as_doc, to_self):
 
 
 def help_text():
+    query = "kata" if language.get() == "id" else "words"
     return (
-        "Assalamu'alaikum 🕌 *haramain.info* media archive bot.\n\n"
-        "Tekan /start untuk menu tombol — semua perintah di bawah ini\n"
-        "juga bisa dijalankan tanpa mengetik.\n\n"
-        "• /latest [n] — n rekaman terbaru\n"
-        "• /search <kata> — cari nama file (mis. `/search sudais fajr`)\n"
-        "• /date YYYY-MM-DD — media satu tanggal\n"
-        "• /year [yyyy] — telusuri per tahun → bulan\n"
-        "• /stat — statistik arsip\n"
-        "• /imaams — Quran reciters (command menu)\n"
-        "• /status [id] — download status in this chat\n"
-        "• /cancel <id> — cancel a queued or running download\n"
-        "Klik tombol Unduh pada hasil arsip untuk menerima berkas.\n\n"
-        "Hasil panjang tampil 5 per halaman dengan tombol ⬅️ Back / Next ➡️."
+        "❓ *Help*\n\n"
+        "Use /start for the main menu. Other commands are available in Telegram's command menu.\n\n"
+        "*Browse the archive*\n"
+        "• `/latest [n]` — latest recordings\n"
+        f"• `/search <{query}>` — search recordings\n"
+        "• `/date YYYY-MM-DD` — recordings for a date\n"
+        "• `/year [yyyy]` — browse years and months\n"
+        "• `/stat` — archive statistics\n\n"
+        "*Quran recitations*\n"
+        "• `/imaams` — browse reciters and audio\n\n"
+        "*Downloads*\n"
+        "Select a recording, then tap Download to receive it in this chat.\n"
+        "• `/status [id]` — view downloads in this chat\n"
+        "• `/cancel <id>` — cancel a download\n\n"
+        "*Preferences*\n"
+        "• `/language` — choose language\n"
+        "• `/start` — open the main menu\n\n"
+        "Search results show 5 per page — use ⬅️ Back / Next ➡️."
     )
 
 
@@ -823,10 +837,18 @@ def _handle_update(upd, db, token):
         out = _screen_latest(db, n)
         _push(token, chat, out[0], out[1])
     elif cmd == "/date":
-        m = re.match(r"(\d{4})-(\d{2})(?:-(\d{2}))?", args[0] if args else "")
+        m = re.fullmatch(r"([0-9]{4})-([0-9]{2})(?:-([0-9]{2}))?",
+                         args[0] if len(args) == 1 else "")
+        if m:
+            try:
+                datetime(int(m[1]), int(m[2]), int(m[3]) if m[3] else 1)
+            except ValueError:
+                m = None
         if not m:
-            out = _screen_date()
-            _push(token, chat, out[0], out[1])
+            text, markup = _screen_date()
+            if args:
+                text = "Please enter a valid date.\n\n" + text
+            _push(token, chat, text, markup)
             return
         spec = {
             "kind": "date",
@@ -835,7 +857,11 @@ def _handle_update(upd, db, token):
             "d": int(m[3]) if m[3] else None,
         }
         if not db.by_date_page(spec["y"], spec["m"], spec["d"])[1]:
-            send(token, chat, f"No media found for {m[0]}.")
+            _push(token, chat, f"No media found for {m[0]}.", _mk([
+                [{"text": "📅 By date", "callback_data": "c:date"},
+                 {"text": "🗓 Year", "callback_data": "c:years"}],
+                [HOME],
+            ]))
             return
         _send_view(token, chat, spec, 1, db)
     elif cmd == "/search":
@@ -845,7 +871,9 @@ def _handle_update(upd, db, token):
             return
         spec = {"kind": "search", "terms": [a.lower() for a in args]}
         if not db.search_page(spec["terms"])[1]:
-            send(token, chat, "No results. Try other keywords.")
+            _push(token, chat, "No results. Try other keywords.", _mk([
+                [{"text": "🔎 Search again", "callback_data": "c:search"}, HOME],
+            ]))
             return
         _send_view(token, chat, spec, 1, db)
     elif cmd == "/year":

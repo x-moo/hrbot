@@ -18,6 +18,20 @@ class LanguageTests(unittest.TestCase):
         finally:
             language.reset(context)
 
+    def test_translation_keeps_spaces_before_numeric_values(self):
+        from bot.i18n import language, translate
+        context = language.set('id')
+        try:
+            self.assertEqual(translate('page 1/2'), 'halaman 1/2')
+            self.assertEqual(translate('No media found for 2026-11-27.'),
+                             'Tidak ada media untuk 2026-11-27.')
+            self.assertEqual(translate('No data for 2026.'),
+                             'Tidak ada data untuk 2026.')
+            self.assertEqual(translate('100 URLs across 1 year'),
+                             '100 URL dalam 1 tahun')
+        finally:
+            language.reset(context)
+
     def test_selection_survives_reopening(self):
         from bot.i18n import Preferences
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:

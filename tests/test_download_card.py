@@ -14,6 +14,8 @@ URL = "https://mirrors.example/Sheikh_Test_(1)-2026.mp3"
 
 class DownloadCardTests(unittest.TestCase):
     def setUp(self):
+        context = language.set('id')
+        self.addCleanup(language.reset, context)
         self.registry = JobRegistry()
         self.api = Mock(return_value={"message_id": 3})
         self.notify = Mock()
@@ -48,10 +50,31 @@ class DownloadCardTests(unittest.TestCase):
         self.job.files = [str(Path(self.temp.name) / "SheikhDosary_Isha-2026-11-25.mp3")]
         self.job.lines.append("downloaded 3.4 MB in 2.1s")
         text = self._text()
-        self.assertIn("🎙️ audio", text)
+        self.assertIn("🎙️ Audio", text)
         self.assertIn("3.4 MB", text)
         self.assertIn("mirrors.example", text)
         self.assertIn("Selesai", text)
+
+    def test_file_kinds_follow_the_uploader_classification(self):
+        for name, label in [('track.opus', '🎙️ Audio'), ('video.webm', '🎬 Video'),
+                            ('video.mov', '🎬 Video'), ('photo.jpg', '🖼️ Gambar'),
+                            ('archive.bin', '📦 Berkas')]:
+            with self.subTest(name=name):
+                self.job.files = [str(Path(self.temp.name) / name)]
+                self.assertIn(label, self._text())
+
+    def test_filename_words_are_not_localized(self):
+        self.job.files = ['Latest.mp3', 'Download.mp3']
+        for code in ('id', 'en'):
+            token = language.set(code)
+            try:
+                text = self._text()
+                self.assertIn('Latest.mp3', text)
+                self.assertIn('Download.mp3', text)
+                self.assertNotIn('Terbaru.mp3', text)
+                self.assertNotIn('Unduh.mp3', text)
+            finally:
+                language.reset(token)
 
     def test_filename_markdown_is_escaped(self):
         self.job.files = [str(Path(self.temp.name) / "Sheikh_Test_[1].mp3")]
